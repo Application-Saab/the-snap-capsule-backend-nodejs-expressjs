@@ -1,37 +1,25 @@
-
-const express = require("express");
-const cors = require("cors");
-const helmet = require("helmet");
-const mongoose = require("mongoose");
 require("dotenv").config();
-
-const app = express();
-const PORT = process.env.PORT || 5000;
-
-app.use(helmet());
-app.use(cors());
-app.use(express.json());
-
-app.get("/api/health", (req, res) => {
-  res.status(200).json({
-    success: true,
-    message: "TheSnapCapsule backend is running",
-    database:
-      mongoose.connection.readyState === 1 ? "connected" : "disconnected",
-  });
-});
+const mongoose = require("mongoose");
+const { loadEnv } = require("./src/config/env");
+const { createApp } = require("./src/app");
+const { createMongoUserRepository } = require("./src/repositories/userRepository");
+const { createGoogleVerifier } = require("./src/services/googleVerifier");
 
 async function startServer() {
   try {
-    if (!process.env.MONGODB_URI) {
-      throw new Error("MONGODB_URI is missing from .env");
-    }
+    const config = loadEnv();
 
-    await mongoose.connect(process.env.MONGODB_URI);
+    await mongoose.connect(config.MONGODB_URI);
     console.log("MongoDB Atlas connected successfully");
 
-    app.listen(PORT, () => {
-      console.log(`Backend running at http://localhost:${PORT}`);
+    const app = createApp({
+      config,
+      users: createMongoUserRepository(),
+      verifyGoogleToken: createGoogleVerifier(config.GOOGLE_CLIENT_ID),
+    });
+
+    app.listen(config.PORT, () => {
+      console.log(`Backend running at http://localhost:${config.PORT}`);
     });
   } catch (error) {
     console.error("Failed to start backend:", error.message);
