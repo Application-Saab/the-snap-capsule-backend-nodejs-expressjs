@@ -7,7 +7,8 @@ function notFound(req, res) {
 // eslint-disable-next-line no-unused-vars
 function errorHandler(err, req, res, next) {
   if (err instanceof HttpError) {
-    return res.status(err.status).json({ success: false, message: err.message, code: err.code });
+    if (err.details && err.details.retryAfter) res.set("Retry-After", String(err.details.retryAfter));
+    return res.status(err.status).json({ success: false, message: err.message, code: err.code, ...err.details });
   }
   // Malformed JSON body.
   if (err && err.type === "entity.parse.failed") {

@@ -1,5 +1,11 @@
 const { z } = require("zod");
 
+// Empty values in .env (e.g. `SMTP_HOST=`) count as "not set".
+const optionalString = z
+  .string()
+  .optional()
+  .transform((v) => (v && v.trim() ? v.trim() : undefined));
+
 // All configuration comes from environment variables (.env locally, the
 // hosting provider's settings in production). See .env.example.
 const envSchema = z.object({
@@ -28,6 +34,26 @@ const envSchema = z.object({
   // Number of reverse proxies in front of the app (e.g. 1 on Render/Railway/
   // Heroku-style hosts) so rate limiting sees the real client IP.
   TRUST_PROXY: z.coerce.number().int().min(0).default(0),
+
+  // Email one-time codes
+  OTP_TTL_MINUTES: z.coerce.number().int().min(1).max(60).default(10),
+
+  // Outgoing email (SMTP). Works with any provider: Google Workspace, Resend,
+  // Brevo, SendGrid, Amazon SES… Required in production. In development, if
+  // SMTP_HOST is empty, codes are printed to the console instead.
+  SMTP_HOST: optionalString,
+  SMTP_PORT: z.coerce.number().int().positive().default(465),
+  SMTP_SECURE: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
+  SMTP_USER: optionalString,
+  SMTP_PASS: optionalString,
+  MAIL_FROM: z.string().default("Snap Capsule <support@thesnapcapsule.com>"),
+}).superRefine((env, ctx) => {
+  if (env.NODE_ENV === "production" && !env.SMTP_HOST) {
+    ctx.addIssue({ code: "custom", path: ["SMTP_HOST"], message: "SMTP_HOST is required in production to send login codes" });
+  }
 });
 
 function loadEnv(source = process.env) {

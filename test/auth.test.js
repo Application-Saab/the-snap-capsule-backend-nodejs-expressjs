@@ -167,6 +167,12 @@ describe("loadEnv", () => {
     assert.deepEqual(env.corsOrigins, ["https://thesnapcapsule.com", "http://localhost:3000"]);
   });
 
+  test("requires SMTP in production but not in development", () => {
+    assert.throws(() => loadEnv({ ...valid, NODE_ENV: "production" }), /SMTP_HOST/);
+    assert.equal(loadEnv({ ...valid, NODE_ENV: "production", SMTP_HOST: "smtp.example.com" }).SMTP_HOST, "smtp.example.com");
+    assert.equal(loadEnv({ ...valid, SMTP_HOST: "" }).SMTP_HOST, undefined);
+  });
+
   test("rejects a short JWT secret and a wrong client ID", () => {
     assert.throws(() => loadEnv({ ...valid, JWT_SECRET: "short" }), /JWT_SECRET/);
     assert.throws(() => loadEnv({ ...valid, GOOGLE_CLIENT_ID: "not-a-client-id" }), /GOOGLE_CLIENT_ID/);

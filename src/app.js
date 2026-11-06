@@ -14,9 +14,11 @@ const { notFound, errorHandler } = require("./middleware/errorHandler");
  * @param {object} deps
  * @param {object} deps.config            result of loadEnv()
  * @param {object} deps.users             user repository
+ * @param {object} deps.otps              login-code repository
+ * @param {object} deps.mailer            { sendOtp(email, code, ttlMinutes) }
  * @param {Function} deps.verifyGoogleToken (idToken) => Promise<profile>
  */
-function createApp({ config, users, verifyGoogleToken }) {
+function createApp({ config, users, otps, mailer, verifyGoogleToken }) {
   const app = express();
 
   if (config.TRUST_PROXY) app.set("trust proxy", config.TRUST_PROXY);
@@ -45,7 +47,7 @@ function createApp({ config, users, verifyGoogleToken }) {
     message: { success: false, message: "Too many requests. Please try again in a minute." },
   });
 
-  app.use("/api/auth", authLimiter, createAuthRouter({ config, users, verifyGoogleToken }));
+  app.use("/api/auth", authLimiter, createAuthRouter({ config, users, otps, mailer, verifyGoogleToken }));
 
   app.use(notFound);
   app.use(errorHandler);

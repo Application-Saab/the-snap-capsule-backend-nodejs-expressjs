@@ -74,4 +74,25 @@ async function findOrCreateGoogleUser(profile, users, now = new Date()) {
   }
 }
 
-module.exports = { findOrCreateGoogleUser, toPublicUser };
+/**
+ * Finds or creates the user for an email address that was just proven with a
+ * one-time code. Signing in by email reaches the same account as Google
+ * sign-in with that email, so users can use either method.
+ */
+async function findOrCreateEmailUser(email, users, now = new Date()) {
+  const existing = await users.findByEmail(email);
+  if (existing) {
+    return users.update(existing.id, { emailVerified: true, lastLoginAt: now });
+  }
+  try {
+    return await users.create({ email, emailVerified: true, lastLoginAt: now });
+  } catch (err) {
+    if (err && err.code === 11000) {
+      const again = await users.findByEmail(email);
+      if (again) return again;
+    }
+    throw err;
+  }
+}
+
+module.exports = { findOrCreateGoogleUser, findOrCreateEmailUser, toPublicUser };

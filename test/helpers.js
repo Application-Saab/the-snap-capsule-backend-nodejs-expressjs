@@ -6,7 +6,52 @@ const TEST_CONFIG = {
   JWT_EXPIRES_IN: "7d",
   corsOrigins: ["http://localhost:3000"],
   TRUST_PROXY: 0,
+  OTP_TTL_MINUTES: 10,
 };
+
+// In-memory stand-in for the MongoDB login-code repository.
+function createMemoryOtpRepository() {
+  const rows = new Map();
+  return {
+    rows,
+    async get(email) {
+      const r = rows.get(email);
+      return r ? { ...r } : null;
+    },
+    async upsert(email, fields) {
+      rows.set(email, { ...(rows.get(email) || {}), email, ...fields });
+    },
+    async consumeAttempt(email, maxAttempts, now) {
+      const r = rows.get(email);
+      if (!r || r.attempts >= maxAttempts || r.expiresAt <= now) return null;
+      r.attempts += 1;
+      return { ...r };
+    },
+    async remove(email) {
+      rows.delete(email);
+    },
+  };
+}
+
+// Captures emails instead of sending them.
+function createFakeMailer() {
+  const sent = [];
+  return {
+    sent,
+    failNext: false,
+    lastCodeFor(email) {
+      const hit = [...sent].reverse().find((m) => m.email === email);
+      return hit && hit.code;
+    },
+    async sendOtp(email, code, ttlMinutes) {
+      if (this.failNext) {
+        this.failNext = false;
+        throw new Error("SMTP down");
+      }
+      sent.push({ email, code, ttlMinutes });
+    },
+  };
+}
 
 // In-memory stand-in for the MongoDB user repository, including the unique
 // indexes on email and googleId.
@@ -68,12 +113,16 @@ async function fakeVerifyGoogleToken(credential) {
 
 function buildTestApp(overrides = {}) {
   const users = overrides.users || createMemoryUserRepository();
+  const otps = overrides.otps || createMemoryOtpRepository();
+  const mailer = overrides.mailer || createFakeMailer();
   const app = createApp({
     config: TEST_CONFIG,
     users,
+    otps,
+    mailer,
     verifyGoogleToken: overrides.verifyGoogleToken || fakeVerifyGoogleToken,
   });
-  return { app, users };
+  return { app, users, otps, mailer };
 }
 
-module.exports = { buildTestApp, createMemoryUserRepository, TEST_CONFIG };
+module.exports = { buildTestApp, createMemoryUserRepository, createMemoryOtpRepository, createFakeMailer, TEST_CONFIG };
