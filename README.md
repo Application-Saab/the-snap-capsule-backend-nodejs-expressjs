@@ -34,6 +34,7 @@ Optional: `PORT` (5000), `JWT_EXPIRES_IN` (`7d`), `OTP_TTL_MINUTES` (10), `CORS_
 | GET | `/api/auth/me` | Header `Authorization: Bearer <token>`. Returns the signed-in user |
 | POST | `/api/capsules` | Signed in. Body `{ "name", "eventDate": "YYYY-MM-DD" }`. Creates a capsule, returns `201 { capsule }` |
 | GET | `/api/capsules` | Signed in. Returns `{ capsules }`, the user's own, newest first |
+| GET | `/api/capsules/:id` | Signed in. Returns `{ capsule }` if it's yours; `404` otherwise (same response for missing and not-yours) |
 
 ### How Google sign-in works
 

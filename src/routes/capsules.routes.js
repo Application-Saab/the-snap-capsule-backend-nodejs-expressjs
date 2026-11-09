@@ -48,6 +48,16 @@ function createCapsulesRouter({ config, users, capsules }) {
     res.status(200).json({ success: true, capsules: list.map(toPublicCapsule) });
   });
 
+  // GET /api/capsules/:id → { capsule }. Only the owner can see it; anyone
+  // else gets the same 404 as a missing capsule, so IDs can't be probed.
+  router.get("/:id", async (req, res) => {
+    const capsule = await capsules.findById(req.params.id);
+    if (!capsule || capsule.ownerId !== req.user.id) {
+      throw new HttpError(404, "We couldn't find that capsule.", "CAPSULE_NOT_FOUND");
+    }
+    res.status(200).json({ success: true, capsule: toPublicCapsule(capsule) });
+  });
+
   return router;
 }
 

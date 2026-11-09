@@ -48,6 +48,10 @@ function createMemoryCapsuleRepository() {
       rows.set(row.id, row);
       return { ...row };
     },
+    async findById(id) {
+      const r = rows.get(id);
+      return r ? { ...r } : null;
+    },
     async listByOwner(ownerId) {
       return [...rows.values()]
         .filter((r) => r.ownerId === ownerId)
