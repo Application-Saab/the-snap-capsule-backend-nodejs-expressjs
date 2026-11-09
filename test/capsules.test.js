@@ -109,6 +109,36 @@ describe("GET /api/capsules", () => {
   });
 });
 
+describe("GET /api/capsules/:id", () => {
+  test("returns your own capsule", async () => {
+    const { app } = buildTestApp();
+    const { token } = await signIn(app);
+    const created = await create(app, token, { name: "Housewarming", eventDate: "2026-09-27" });
+    const res = await request(app).get(`/api/capsules/${created.body.capsule.id}`).set("Authorization", `Bearer ${token}`);
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.body.capsule, created.body.capsule);
+  });
+
+  test("someone else's capsule looks the same as a missing one (404)", async () => {
+    const { app } = buildTestApp();
+    const asha = await signIn(app, "token-asha");
+    const ravi = await signIn(app, "token-ravi");
+    const created = await create(app, asha.token, { name: "Asha only", eventDate: "2026-09-27" });
+    const theirs = await request(app)
+      .get(`/api/capsules/${created.body.capsule.id}`)
+      .set("Authorization", `Bearer ${ravi.token}`);
+    const missing = await request(app).get("/api/capsules/does-not-exist").set("Authorization", `Bearer ${ravi.token}`);
+    assert.equal(theirs.status, 404);
+    assert.equal(missing.status, 404);
+    assert.deepEqual(theirs.body, missing.body);
+  });
+
+  test("requires sign-in", async () => {
+    const { app } = buildTestApp();
+    assert.equal((await request(app).get("/api/capsules/capsule_1")).status, 401);
+  });
+});
+
 describe("capsule helpers", () => {
   test("parseEventDate accepts real calendar dates only", () => {
     assert.equal(parseEventDate("2028-02-29").toISOString(), "2028-02-29T00:00:00.000Z");

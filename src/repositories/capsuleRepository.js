@@ -16,6 +16,10 @@ function createMongoCapsuleRepository() {
       const doc = await Capsule.create({ owner: ownerId, name, eventDate, shareCode });
       return toRecord(doc.toObject());
     },
+    async findById(id) {
+      if (!mongoose.isValidObjectId(id)) return null;
+      return toRecord(await Capsule.findById(id).lean());
+    },
     async listByOwner(ownerId) {
       if (!mongoose.isValidObjectId(ownerId)) return [];
       const docs = await Capsule.find({ owner: ownerId }).sort({ createdAt: -1 }).limit(100).lean();
