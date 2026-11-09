@@ -32,6 +32,8 @@ Optional: `PORT` (5000), `JWT_EXPIRES_IN` (`7d`), `OTP_TTL_MINUTES` (10), `CORS_
 | POST | `/api/auth/email/request-otp` | Body `{ "email" }`. Emails a 6-digit code (valid 10 minutes) |
 | POST | `/api/auth/email/verify-otp` | Body `{ "email", "code" }`. Checks the code, finds or creates the user, returns `{ token, user }` |
 | GET | `/api/auth/me` | Header `Authorization: Bearer <token>`. Returns the signed-in user |
+| POST | `/api/capsules` | Signed in. Body `{ "name", "eventDate": "YYYY-MM-DD" }`. Creates a capsule, returns `201 { capsule }` |
+| GET | `/api/capsules` | Signed in. Returns `{ capsules }`, the user's own, newest first |
 
 ### How Google sign-in works
 
@@ -61,16 +63,20 @@ Email and Google lead to the **same account** when the email matches, so users c
 | `OTP_INVALID` | Wrong code (includes `attemptsLeft`) |
 | `OTP_EXPIRED` / `OTP_TOO_MANY_ATTEMPTS` | Ask for a new code |
 
+### Capsules
+
+A capsule belongs to the user who created it. `eventDate` is a calendar date: send and receive it as `"YYYY-MM-DD"` (stored as midnight UTC, so it never shifts a day across time zones). Each capsule gets a random 8-character `shareCode` for the future guest link / QR code (no look-alike characters like 0/O or 1/l). Limits for now: name 2–80 characters, dates from 1900 up to 5 years ahead, 50 capsules per user.
+
 ## Project structure
 
 ```
 server.js                     loads env, connects to MongoDB, starts the app
 src/app.js                    Express app (middleware, routes, error handling)
 src/config/env.js             environment validation
-src/models/User.js            Mongoose user model
+src/models/                   Mongoose models (User, OtpCode, Capsule)
 src/repositories/             database access (swap-able; tests use an in-memory store)
 src/services/                 Google token verification, email codes, mailer, sign-in logic
-src/routes/auth.routes.js     /api/auth endpoints
+src/routes/                   /api/auth and /api/capsules endpoints
 src/middleware/               requireAuth, error handling
 test/                         node:test + supertest
 ```

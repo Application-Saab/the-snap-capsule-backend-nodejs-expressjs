@@ -4,6 +4,7 @@ const { loadEnv } = require("./src/config/env");
 const { createApp } = require("./src/app");
 const { createMongoUserRepository } = require("./src/repositories/userRepository");
 const { createMongoOtpRepository } = require("./src/repositories/otpRepository");
+const { createMongoCapsuleRepository } = require("./src/repositories/capsuleRepository");
 const { createGoogleVerifier } = require("./src/services/googleVerifier");
 const { createMailer } = require("./src/services/mailer");
 
@@ -23,6 +24,7 @@ async function startServer() {
       config,
       users: createMongoUserRepository(),
       otps: createMongoOtpRepository(),
+      capsules: createMongoCapsuleRepository(),
       mailer,
       verifyGoogleToken: createGoogleVerifier(config.GOOGLE_CLIENT_ID),
     });
