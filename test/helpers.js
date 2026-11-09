@@ -33,6 +33,33 @@ function createMemoryOtpRepository() {
   };
 }
 
+// In-memory stand-in for the MongoDB capsule repository.
+function createMemoryCapsuleRepository() {
+  const rows = new Map();
+  let seq = 0;
+  return {
+    rows,
+    async create({ ownerId, name, eventDate, shareCode }) {
+      if ([...rows.values()].some((r) => r.shareCode === shareCode)) {
+        throw Object.assign(new Error("E11000 duplicate key"), { code: 11000 });
+      }
+      const now = new Date(Date.now() + seq); // keeps creation order stable
+      const row = { id: `capsule_${++seq}`, ownerId, name, eventDate, shareCode, createdAt: now, updatedAt: now };
+      rows.set(row.id, row);
+      return { ...row };
+    },
+    async listByOwner(ownerId) {
+      return [...rows.values()]
+        .filter((r) => r.ownerId === ownerId)
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .map((r) => ({ ...r }));
+    },
+    async countByOwner(ownerId) {
+      return [...rows.values()].filter((r) => r.ownerId === ownerId).length;
+    },
+  };
+}
+
 // Captures emails instead of sending them.
 function createFakeMailer() {
   const sent = [];
@@ -115,14 +142,23 @@ function buildTestApp(overrides = {}) {
   const users = overrides.users || createMemoryUserRepository();
   const otps = overrides.otps || createMemoryOtpRepository();
   const mailer = overrides.mailer || createFakeMailer();
+  const capsules = overrides.capsules || createMemoryCapsuleRepository();
   const app = createApp({
     config: TEST_CONFIG,
     users,
     otps,
+    capsules,
     mailer,
     verifyGoogleToken: overrides.verifyGoogleToken || fakeVerifyGoogleToken,
   });
-  return { app, users, otps, mailer };
+  return { app, users, otps, mailer, capsules };
 }
 
-module.exports = { buildTestApp, createMemoryUserRepository, createMemoryOtpRepository, createFakeMailer, TEST_CONFIG };
+module.exports = {
+  buildTestApp,
+  createMemoryUserRepository,
+  createMemoryOtpRepository,
+  createMemoryCapsuleRepository,
+  createFakeMailer,
+  TEST_CONFIG,
+};
