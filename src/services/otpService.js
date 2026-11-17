@@ -1,7 +1,7 @@
 const crypto = require("crypto");
 const { HttpError } = require("../utils/httpError");
 
-const OTP_LENGTH = 6;
+const OTP_LENGTH = 4; // digits in a login code (the login screen shows 4 boxes)
 const MAX_ATTEMPTS = 5; // wrong guesses allowed per code
 const RESEND_COOLDOWN_SECONDS = 60; // wait between codes for one email
 const MAX_SENDS_PER_HOUR = 5; // codes per email per hour

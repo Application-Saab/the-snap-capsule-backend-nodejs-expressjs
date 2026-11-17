@@ -3,24 +3,26 @@ const assert = require("node:assert/strict");
 const request = require("supertest");
 const jwt = require("jsonwebtoken");
 const { buildTestApp, TEST_CONFIG } = require("./helpers");
-const { MAX_ATTEMPTS, MAX_SENDS_PER_HOUR } = require("../src/services/otpService");
+const { MAX_ATTEMPTS, MAX_SENDS_PER_HOUR, OTP_LENGTH } = require("../src/services/otpService");
 const { otpEmail } = require("../src/services/mailer");
 
 const requestOtp = (app, email) => request(app).post("/api/auth/email/request-otp").send({ email });
 const verifyOtp = (app, email, code) => request(app).post("/api/auth/email/verify-otp").send({ email, code });
-const wrong = (code) => String((Number(code) + 1) % 1000000).padStart(6, "0");
+const wrong = (code) => String((Number(code) + 1) % 10 ** OTP_LENGTH).padStart(OTP_LENGTH, "0");
 
 describe("POST /api/auth/email/request-otp", () => {
-  test("emails a 6-digit code and stores only its hash", async () => {
+  test("emails a 4-digit code and stores only its hash", async () => {
     const { app, otps, mailer } = buildTestApp();
     const res = await requestOtp(app, "  Asha@Example.COM ");
     assert.equal(res.status, 200);
     assert.equal(res.body.email, "asha@example.com");
     assert.equal(res.body.expiresInMinutes, 10);
     assert.equal(res.body.resendAfterSeconds, 60);
+    assert.equal(res.body.codeLength, 4);
+    assert.match(res.body.message, /4-digit code/);
 
     const code = mailer.lastCodeFor("asha@example.com");
-    assert.match(code, /^\d{6}$/);
+    assert.match(code, /^\d{4}$/);
     const stored = otps.rows.get("asha@example.com");
     assert.ok(stored.codeHash);
     assert.notEqual(stored.codeHash, code);
@@ -158,7 +160,7 @@ describe("POST /api/auth/email/verify-otp", () => {
 
   test("rejects malformed input", async () => {
     const { app } = buildTestApp();
-    for (const body of [{ email: "asha@example.com" }, { email: "asha@example.com", code: "12ab56" }, { code: "123456" }]) {
+    for (const body of [{ email: "asha@example.com" }, { email: "asha@example.com", code: "12ab" }, { email: "asha@example.com", code: "123456" }, { code: "1234" }]) {
       const res = await request(app).post("/api/auth/email/verify-otp").send(body);
       assert.equal(res.status, 400);
       assert.equal(res.body.code, "INVALID_REQUEST");
@@ -191,10 +193,10 @@ describe("email and Google reach the same account", () => {
 
 describe("email template", () => {
   test("includes the code and expiry in subject, text and HTML", () => {
-    const { subject, text, html } = otpEmail("042917", 10);
-    assert.match(subject, /042917/);
-    assert.match(text, /042917/);
+    const { subject, text, html } = otpEmail("0429", 10);
+    assert.match(subject, /0429/);
+    assert.match(text, /0429/);
     assert.match(text, /10 minutes/);
-    assert.match(html, /042917/);
+    assert.match(html, /0429/);
   });
 });

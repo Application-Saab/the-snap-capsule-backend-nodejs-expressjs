@@ -29,7 +29,7 @@ Optional: `PORT` (5000), `JWT_EXPIRES_IN` (`7d`), `OTP_TTL_MINUTES` (10), `CORS_
 |---|---|---|
 | GET | `/api/health` | Server and database status |
 | POST | `/api/auth/google` | Body `{ "credential": "<Google ID token>" }`. Verifies the token with Google, finds or creates the user, returns `{ token, user }` |
-| POST | `/api/auth/email/request-otp` | Body `{ "email" }`. Emails a 6-digit code (valid 10 minutes) |
+| POST | `/api/auth/email/request-otp` | Body `{ "email" }`. Emails a 4-digit code (valid 10 minutes). Response includes `codeLength: 4` |
 | POST | `/api/auth/email/verify-otp` | Body `{ "email", "code" }`. Checks the code, finds or creates the user, returns `{ token, user }` |
 | GET | `/api/auth/me` | Header `Authorization: Bearer <token>`. Returns the signed-in user |
 | POST | `/api/capsules` | Signed in. Body `{ "name", "eventDate": "YYYY-MM-DD" }`. Creates a capsule, returns `201 { capsule }` |
@@ -49,7 +49,7 @@ Errors: `400` missing credential, `401` token rejected, `409` email already link
 
 ### How email sign-in works
 
-1. `request-otp` creates a random 6-digit code, stores only an HMAC of it (never the code), and emails it.
+1. `request-otp` creates a random 4-digit code, stores only an HMAC of it (never the code), and emails it.
 2. `verify-otp` checks the code and returns a session token. Each code works once.
 3. Limits: 5 wrong guesses per code, 60 seconds between codes, 5 codes per email per hour. Old codes are deleted automatically by MongoDB.
 

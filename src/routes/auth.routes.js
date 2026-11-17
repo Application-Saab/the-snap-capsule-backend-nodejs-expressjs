@@ -1,7 +1,7 @@
 const express = require("express");
 const { z } = require("zod");
 const { findOrCreateGoogleUser, findOrCreateEmailUser, toPublicUser } = require("../services/authService");
-const { requestOtp, verifyOtp } = require("../services/otpService");
+const { requestOtp, verifyOtp, OTP_LENGTH } = require("../services/otpService");
 const { signSessionToken } = require("../utils/sessionToken");
 const { createRequireAuth } = require("../middleware/requireAuth");
 const { HttpError } = require("../utils/httpError");
@@ -15,7 +15,7 @@ const verifyOtpBody = z.object({
   code: z
     .string()
     .trim()
-    .regex(/^\d{6}$/),
+    .regex(new RegExp(`^\\d{${OTP_LENGTH}}$`)),
 });
 
 function createAuthRouter({ config, users, otps, mailer, verifyGoogleToken }) {
@@ -48,7 +48,7 @@ function createAuthRouter({ config, users, otps, mailer, verifyGoogleToken }) {
   });
 
   // ── Email one-time code ───────────────────────────────────────────────
-  // POST /api/auth/email/request-otp  { email } → emails a 6-digit code
+  // POST /api/auth/email/request-otp  { email } → emails a login code (OTP_LENGTH digits)
   router.post("/email/request-otp", async (req, res) => {
     const parsed = requestOtpBody.safeParse(req.body);
     if (!parsed.success) {
@@ -56,14 +56,14 @@ function createAuthRouter({ config, users, otps, mailer, verifyGoogleToken }) {
     }
     const { email } = parsed.data;
     const result = await requestOtp({ email, otps, mailer, config });
-    res.status(200).json({ success: true, message: `We've sent a 6-digit code to ${email}.`, email, ...result });
+    res.status(200).json({ success: true, message: `We've sent a ${OTP_LENGTH}-digit code to ${email}.`, email, codeLength: OTP_LENGTH, ...result });
   });
 
   // POST /api/auth/email/verify-otp  { email, code } → { token, user }
   router.post("/email/verify-otp", async (req, res) => {
     const parsed = verifyOtpBody.safeParse(req.body);
     if (!parsed.success) {
-      throw new HttpError(400, "Please enter your email and the 6-digit code.", "INVALID_REQUEST");
+      throw new HttpError(400, `Please enter your email and the ${OTP_LENGTH}-digit code.`, "INVALID_REQUEST");
     }
     const { email, code } = parsed.data;
     await verifyOtp({ email, code, otps, config });
