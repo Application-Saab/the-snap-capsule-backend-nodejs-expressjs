@@ -5,7 +5,6 @@ const morgan = require("morgan");
 const mongoose = require("mongoose");
 const { rateLimit } = require("express-rate-limit");
 const { createAuthRouter } = require("./routes/auth.routes");
-const { createCapsulesRouter } = require("./routes/capsules.routes");
 const { notFound, errorHandler } = require("./middleware/errorHandler");
 
 /**
@@ -16,11 +15,10 @@ const { notFound, errorHandler } = require("./middleware/errorHandler");
  * @param {object} deps.config            result of loadEnv()
  * @param {object} deps.users             user repository
  * @param {object} deps.otps              login-code repository
- * @param {object} deps.capsules          capsule repository
  * @param {object} deps.mailer            { sendOtp(email, code, ttlMinutes) }
  * @param {Function} deps.verifyGoogleToken (idToken) => Promise<profile>
  */
-function createApp({ config, users, otps, capsules, mailer, verifyGoogleToken }) {
+function createApp({ config, users, otps, mailer, verifyGoogleToken }) {
   const app = express();
 
   if (config.TRUST_PROXY) app.set("trust proxy", config.TRUST_PROXY);
@@ -50,7 +48,6 @@ function createApp({ config, users, otps, capsules, mailer, verifyGoogleToken })
   });
 
   app.use("/api/auth", authLimiter, createAuthRouter({ config, users, otps, mailer, verifyGoogleToken }));
-  app.use("/api/capsules", authLimiter, createCapsulesRouter({ config, users, capsules }));
 
   app.use(notFound);
   app.use(errorHandler);
