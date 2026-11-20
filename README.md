@@ -21,7 +21,7 @@ Required environment variables (the server refuses to start without them):
 
 Required in production: `SMTP_HOST` (plus `SMTP_USER`, `SMTP_PASS`, `SMTP_PORT`, `SMTP_SECURE`, `MAIL_FROM`) for sending login codes. In development, leave `SMTP_HOST` empty and codes are printed in the terminal.
 
-Optional: `PORT` (5000), `JWT_EXPIRES_IN` (`7d`), `OTP_TTL_MINUTES` (10), `CORS_ORIGINS`, `TRUST_PROXY`. See `.env.example`.
+Optional: `PORT` (5000), `JWT_EXPIRES_IN` (`7d`), `OTP_TTL_MINUTES` (10), `CORS_ORIGINS`, `TRUST_PROXY`, `WEB_APP_URL` (`https://thesnapcapsule.com`, used to build capsule weblinks). See `.env.example`.
 
 ## Endpoints
 
@@ -32,6 +32,39 @@ Optional: `PORT` (5000), `JWT_EXPIRES_IN` (`7d`), `OTP_TTL_MINUTES` (10), `CORS_
 | POST | `/api/auth/email/request-otp` | Body `{ "email" }`. Emails a 4-digit code (valid 10 minutes). Response includes `codeLength: 4` |
 | POST | `/api/auth/email/verify-otp` | Body `{ "email", "code" }`. Checks the code, finds or creates the user, returns `{ token, user }` |
 | GET | `/api/auth/me` | Header `Authorization: Bearer <token>`. Returns the signed-in user |
+| POST | `/api/internal/create-event-capsule` | Header `Authorization: Bearer <token>`. Creates an Event Capsule folder and returns its weblink (see below) |
+
+### Create Event Capsule (follows Hora)
+
+Follows Hora's `createEventCapsuleFolder` (`Hora-backend-api`, `routes/order.js`) and uses the same `folders` collection and model. In Hora it runs after an Event Capsule order. Here, the signed-in user calls it from the "Let's Create Your Capsule" screen.
+
+```
+POST /api/internal/create-event-capsule
+Authorization: Bearer <session token>
+{ "eventName": "Rahul's Wedding", "eventDate": "2026-12-05" }
+```
+
+```json
+201 {
+  "error": false, "status": 201, "message": "Event capsule created successfully",
+  "data": {
+    "folderId": "6746a1f3c2…",
+    "folderName": "Rahul's Wedding_<customerId>_rahul@example.com",
+    "eventName": "Rahul's Wedding",
+    "eventDate": "2026-12-05",
+    "shortCode": "L4eHLTo",
+    "status": "processing",
+    "webLink": "https://thesnapcapsule.com/weblink-gallery?galleryId=6746a1f3c2…"
+  }
+}
+```
+
+- `folderName` is `<eventName>_<customerId>_<email>`. Hora uses `<orderId>_<customerId>_<phone>`; Snap Capsule users sign in with email, so the email takes the phone's place.
+- `customerId` is the signed-in user, from the token.
+- `status` starts as `"processing"`, and `shortCode` is a unique 7-character code (`utils/capsuleGenerateShortCode.js`, as Hora).
+- `webLink` is `<WEB_APP_URL>/weblink-gallery?galleryId=<folder _id>`.
+- Same user and same event name again: `200 "Event capsule already exists"` with the existing folder (no duplicate).
+- `400` with `error: true` if the event name (2–80 characters) or date (`YYYY-MM-DD`) is invalid; `401` if not signed in.
 
 ### How Google sign-in works
 
@@ -68,6 +101,9 @@ server.js                     loads env, connects to MongoDB, starts the app
 src/app.js                    Express app (middleware, routes, error handling)
 src/config/env.js             environment validation
 src/models/User.js            Mongoose user model
+src/models/folder.js          Event Capsule folder model, copied from Hora (same collection)
+src/routes/weblink.js         /api/internal endpoints (create Event Capsule)
+src/utils/capsuleGenerateShortCode.js  7-character capsule short codes (from Hora)
 src/repositories/             database access (swap-able; tests use an in-memory store)
 src/services/                 Google token verification, email codes, mailer, sign-in logic
 src/routes/auth.routes.js     /api/auth endpoints

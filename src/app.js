@@ -5,6 +5,8 @@ const morgan = require("morgan");
 const mongoose = require("mongoose");
 const { rateLimit } = require("express-rate-limit");
 const { createAuthRouter } = require("./routes/auth.routes");
+const { createWeblinkRouter } = require("./routes/weblink");
+const { createRequireAuth } = require("./middleware/requireAuth");
 const { notFound, errorHandler } = require("./middleware/errorHandler");
 
 /**
@@ -48,6 +50,10 @@ function createApp({ config, users, otps, mailer, verifyGoogleToken }) {
   });
 
   app.use("/api/auth", authLimiter, createAuthRouter({ config, users, otps, mailer, verifyGoogleToken }));
+
+  // Event Capsules (same folders collection as Hora). Requires a signed-in
+  // user: Authorization: Bearer <session token>.
+  app.use("/api/internal", createRequireAuth({ config, users }), createWeblinkRouter({ config }));
 
   app.use(notFound);
   app.use(errorHandler);
