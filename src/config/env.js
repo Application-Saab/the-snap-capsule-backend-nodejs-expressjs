@@ -31,6 +31,10 @@ const envSchema = z.object({
   // Comma-separated list of browser origins allowed to call this API.
   CORS_ORIGINS: z.string().default("http://localhost:3000"),
 
+  // Website address used to build capsule weblinks
+  // (<WEB_APP_URL>/weblink-gallery?galleryId=<folder _id>).
+  WEB_APP_URL: z.string().url().default("https://thesnapcapsule.com"),
+
   // Number of reverse proxies in front of the app (e.g. 1 on Render/Railway/
   // Heroku-style hosts) so rate limiting sees the real client IP.
   TRUST_PROXY: z.coerce.number().int().min(0).default(0),

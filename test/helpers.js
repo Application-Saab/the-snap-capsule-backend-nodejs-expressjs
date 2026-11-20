@@ -7,6 +7,7 @@ const TEST_CONFIG = {
   corsOrigins: ["http://localhost:3000"],
   TRUST_PROXY: 0,
   OTP_TTL_MINUTES: 10,
+  WEB_APP_URL: "https://thesnapcapsule.com",
 };
 
 // In-memory stand-in for the MongoDB login-code repository.
