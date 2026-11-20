@@ -4,8 +4,8 @@ const request = require("supertest");
 const { buildTestApp, TEST_CONFIG } = require("./helpers");
 const { signSessionToken } = require("../src/utils/sessionToken");
 
-// Checks that don't need MongoDB. The full create flow (event, host guest,
-// chat room, welcome messages, counter) needs a real database.
+// Checks that don't need MongoDB. Saving the event itself needs a real
+// database.
 const URL = "/api/customer/event/create-event-invite";
 
 async function signedIn() {

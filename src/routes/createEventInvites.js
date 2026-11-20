@@ -6,7 +6,6 @@ const express = require("express");
 const router = express.Router();
 const mongoose = require("mongoose");
 const EventInvite = require("../models/event-invite");
-const TicketCounter = require("../models/ticket-counter-luckydraw");
 const User = require("../models/User");
 const generateUniqueShortCode = require("../utils/generateUniqueShortCode");
 
@@ -35,16 +34,7 @@ router.post("/create-event-invite", async (req, res, next) => {
     // Generate unique short code
     const shortCode = await generateUniqueShortCode();
 
-    // Parallel Fetch
-    const [user, counter] = await Promise.all([
-      User.findById(userId),
-
-      TicketCounter.findOneAndUpdate(
-        { _id: "wonderland_event_id" },
-        { $inc: { sequenceValue: 1 } },
-        { new: true, upsert: true },
-      ),
-    ]);
+    const user = await User.findById(userId);
 
     if (!user) {
       return sendResponse(res, 404, true, "User not found");
@@ -68,8 +58,6 @@ router.post("/create-event-invite", async (req, res, next) => {
       fromInternational,
 
       orderId,
-
-      wonderland_id: counter.sequenceValue,
 
       shortCode,
     });

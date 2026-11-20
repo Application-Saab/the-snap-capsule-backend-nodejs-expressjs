@@ -50,8 +50,8 @@ The `eventinvites` model uses `strict: false` (as in Hora), so `orderId` is save
 Reply (Hora format): `201 { "error": false, "status": 201, "message": "Event created successfully", "data": <event> }`, `400 Invalid userId`, `404 User not found`.
 
 What it does:
-1. Generates a unique 7-character `shortCode` and the next `wonderland_id` (counter `wonderland_event_id` in `ticketcounters`).
-2. Saves the event in `eventinvites`.
+1. Generates a unique 7-character `shortCode`.
+2. Saves the event in `eventinvites`. (No `wonderland_id` counter yet.)
 
 Requires a signed-in user (Bearer token).
 
@@ -90,8 +90,7 @@ server.js                     loads env, connects to MongoDB, starts the app
 src/app.js                    Express app (middleware, routes, error handling)
 src/config/env.js             environment validation
 src/models/User.js            Mongoose user model
-src/models/event-invite.js, ticket-counter-luckydraw.js
-                              event models, copied from Hora (same collections)
+src/models/event-invite.js    event model, copied from Hora (same collection)
 src/routes/createEventInvites.js  /api/customer/event endpoints (follows Hora)
 src/utils/generateUniqueShortCode.js  7-character event short codes (from Hora)
 src/repositories/             database access (swap-able; tests use an in-memory store)
