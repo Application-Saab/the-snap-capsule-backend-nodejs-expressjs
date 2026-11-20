@@ -38,7 +38,14 @@ Optional: `PORT` (5000), `JWT_EXPIRES_IN` (`7d`), `OTP_TTL_MINUTES` (10), `CORS_
 
 `POST /api/customer/event/create-event-invite` follows the Hora backend (`Hora-backend-api`, `routes/createEventInvites.js`): same path, same `eventinvites` collection and model, and the same reply format, on Snap Capsule's own database. For now it only creates the event; the host guest, chat room and welcome messages will be added later.
 
-Body: `{ "userId": "<user _id>", "hostName": "Rahul's Wedding", "eventDate": "2026-12-05" }`
+Body (all optional except `userId`; the Create Capsule screen sends `userId`, `hostName`, `eventDate`):
+
+```json
+{ "userId": "<user _id>", "hostName": "Rahul's Wedding", "eventDate": "2026-12-05",
+  "eventType": "", "eventTime": "", "location": "", "googleMapLink": "", "fromInternational": "", "orderId": "" }
+```
+
+`orderId` isn't in the `eventinvites` model (same as Hora's `Production` model), so it isn't saved.
 
 Reply (Hora format): `201 { "error": false, "status": 201, "message": "Event created successfully", "data": <event> }`, `400 Invalid userId`, `404 User not found`.
 

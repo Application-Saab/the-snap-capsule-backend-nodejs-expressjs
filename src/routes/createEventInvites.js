@@ -13,10 +13,20 @@ const generateUniqueShortCode = require("../utils/generateUniqueShortCode");
 const sendResponse = (res, status, error, message, data = null) =>
   res.status(status).json({ error, status, message, data });
 
-// Create event: { userId, hostName, eventDate }
+// Create event
 router.post("/create-event-invite", async (req, res, next) => {
   try {
-    const { userId, hostName, eventDate } = req.body;
+    const {
+      userId,
+      eventType,
+      hostName,
+      eventDate,
+      eventTime,
+      location,
+      googleMapLink,
+      fromInternational,
+      orderId,
+    } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(userId)) {
       return sendResponse(res, 400, true, "Invalid userId");
@@ -43,9 +53,24 @@ router.post("/create-event-invite", async (req, res, next) => {
     // Create event invite
     const event = await EventInvite.create({
       userId,
+      eventType,
+
       hostName,
+
       eventDate: eventDate ? new Date(eventDate) : null,
+
+      eventTime,
+
+      location,
+
+      googleMapLink,
+
+      fromInternational,
+
+      orderId,
+
       wonderland_id: counter.sequenceValue,
+
       shortCode,
     });
 
