@@ -33,6 +33,7 @@ Optional: `PORT` (5000), `JWT_EXPIRES_IN` (`7d`), `OTP_TTL_MINUTES` (10), `CORS_
 | POST | `/api/auth/email/verify-otp` | Body `{ "email", "code" }`. Checks the code, finds or creates the user, returns `{ token, user }` |
 | GET | `/api/auth/me` | Header `Authorization: Bearer <token>`. Returns the signed-in user |
 | POST | `/api/internal/create-event-capsule` | Header `Authorization: Bearer <token>`. Creates an Event Capsule folder and returns its weblink (see below) |
+| GET | `/api/internal/event-capsule/:galleryId` | Header `Authorization: Bearer <token>`. Returns the signed-in user's capsule (same `data` as create, plus `subFolders`); `404` if it isn't theirs |
 
 ### Create Event Capsule (follows Hora)
 
@@ -41,7 +42,7 @@ Follows Hora's `createEventCapsuleFolder` (`Hora-backend-api`, `routes/order.js`
 ```
 POST /api/internal/create-event-capsule
 Authorization: Bearer <session token>
-{ "eventName": "Rahul's Wedding", "eventDate": "2026-12-05" }
+{ "eventName": "Rahul's Wedding", "eventDate": "2026-12-05", "customerId": "<signed-in user's id>" }
 ```
 
 ```json
@@ -60,7 +61,7 @@ Authorization: Bearer <session token>
 ```
 
 - `folderName` is `<eventName>_<customerId>_<eventDate>` (Hora uses `<orderId>_<customerId>_<phone>`).
-- `customerId` is the signed-in user, from the token.
+- `customerId` is the signed-in user, from the token. If the body includes `customerId`, it must match (otherwise `403`).
 - `status` starts as `"processing"`, and `shortCode` is a unique 7-character code (`utils/capsuleGenerateShortCode.js`, as Hora).
 - `webLink` is `<WEB_APP_URL>/weblink-gallery?galleryId=<folder _id>`.
 - Same user, same event name and same date again: `200 "Event capsule already exists"` with the existing folder (no duplicate). A different date creates a new capsule.
