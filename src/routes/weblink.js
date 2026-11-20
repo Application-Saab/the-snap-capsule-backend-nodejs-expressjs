@@ -44,9 +44,9 @@ function createWeblinkRouter({ config }) {
       }
 
       const customerId = String(req.user.id);
-      // Hora: `${orderId}_${customerId}_${phoneNo}`. Snap Capsule users sign
-      // in with email (no phone), so the email takes the phone's place.
-      const folderName = `${eventName}_${customerId}_${req.user.email || ""}`;
+      // Hora: `${orderId}_${customerId}_${phoneNo}`. Snap Capsule:
+      // `${eventName}_${customerId}_${eventDate}` (e.g. "Rahul's Wedding_<id>_2026-12-05").
+      const folderName = `${eventName}_${customerId}_${eventDate}`;
 
       const existingFolder = await FolderModel.findOne({ folderName, customerId });
       if (existingFolder) {

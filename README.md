@@ -49,7 +49,7 @@ Authorization: Bearer <session token>
   "error": false, "status": 201, "message": "Event capsule created successfully",
   "data": {
     "folderId": "6746a1f3c2…",
-    "folderName": "Rahul's Wedding_<customerId>_rahul@example.com",
+    "folderName": "Rahul's Wedding_<customerId>_2026-12-05",
     "eventName": "Rahul's Wedding",
     "eventDate": "2026-12-05",
     "shortCode": "L4eHLTo",
@@ -59,11 +59,11 @@ Authorization: Bearer <session token>
 }
 ```
 
-- `folderName` is `<eventName>_<customerId>_<email>`. Hora uses `<orderId>_<customerId>_<phone>`; Snap Capsule users sign in with email, so the email takes the phone's place.
+- `folderName` is `<eventName>_<customerId>_<eventDate>` (Hora uses `<orderId>_<customerId>_<phone>`).
 - `customerId` is the signed-in user, from the token.
 - `status` starts as `"processing"`, and `shortCode` is a unique 7-character code (`utils/capsuleGenerateShortCode.js`, as Hora).
 - `webLink` is `<WEB_APP_URL>/weblink-gallery?galleryId=<folder _id>`.
-- Same user and same event name again: `200 "Event capsule already exists"` with the existing folder (no duplicate).
+- Same user, same event name and same date again: `200 "Event capsule already exists"` with the existing folder (no duplicate). A different date creates a new capsule.
 - `400` with `error: true` if the event name (2–80 characters) or date (`YYYY-MM-DD`) is invalid; `401` if not signed in.
 
 ### How Google sign-in works
