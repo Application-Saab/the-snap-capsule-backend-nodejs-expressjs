@@ -5,6 +5,8 @@ const morgan = require("morgan");
 const mongoose = require("mongoose");
 const { rateLimit } = require("express-rate-limit");
 const { createAuthRouter } = require("./routes/auth.routes");
+const createEventInviteRoutes = require("./routes/createEventInvites");
+const { createRequireAuth } = require("./middleware/requireAuth");
 const { notFound, errorHandler } = require("./middleware/errorHandler");
 
 /**
@@ -48,6 +50,10 @@ function createApp({ config, users, otps, mailer, verifyGoogleToken }) {
   });
 
   app.use("/api/auth", authLimiter, createAuthRouter({ config, users, otps, mailer, verifyGoogleToken }));
+
+  // Events: same routes and collections as the Hora backend. Requires a
+  // signed-in user (Authorization: Bearer <session token>).
+  app.use("/api/customer/event", createRequireAuth({ config, users }), createEventInviteRoutes);
 
   app.use(notFound);
   app.use(errorHandler);

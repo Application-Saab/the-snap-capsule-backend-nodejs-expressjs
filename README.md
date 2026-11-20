@@ -32,6 +32,33 @@ Optional: `PORT` (5000), `JWT_EXPIRES_IN` (`7d`), `OTP_TTL_MINUTES` (10), `CORS_
 | POST | `/api/auth/email/request-otp` | Body `{ "email" }`. Emails a 4-digit code (valid 10 minutes). Response includes `codeLength: 4` |
 | POST | `/api/auth/email/verify-otp` | Body `{ "email", "code" }`. Checks the code, finds or creates the user, returns `{ token, user }` |
 | GET | `/api/auth/me` | Header `Authorization: Bearer <token>`. Returns the signed-in user |
+| POST | `/api/customer/event/create-event-invite` | Header `Authorization: Bearer <token>`. Creates an event (see below) |
+
+### Create event (same as Hora)
+
+`POST /api/customer/event/create-event-invite` uses the same route code and the same MongoDB collections as the Hora backend (`Hora-backend-api`, `routes/createEventInvites.js`), on Snap Capsule's own database.
+
+Body (all optional except `userId`):
+
+```json
+{ "userId": "<user _id>", "hostName": "Rahul's Wedding", "eventDate": "2026-12-05",
+  "eventType": "", "eventTime": "", "location": "", "googleMapLink": "", "fromInternational": "", "orderId": "" }
+```
+
+Reply (Hora format): `201 { "error": false, "status": 201, "message": "Event created successfully", "data": <event> }`, `400 Invalid userId`, `404 User not found`.
+
+What it does:
+1. Generates a unique 7-character `shortCode` and the next `wonderland_id` (counter `wonderland_event_id` in `ticketcounters`).
+2. Creates the event in `eventinvites`.
+3. Adds the host to `eventguests` (`isHost: true`, `rsvpStatus: "will Come"`).
+4. Creates a chat room in `chatrooms` and two welcome messages in `eventmessages`.
+5. If any of 3–4 fails, removes what it created.
+6. With an `orderId`, links the matching `folders` document and asks `https://horaservices.com/face-api/.../generate-banner` for a banner.
+
+Differences from Hora:
+- Requires a signed-in user (Bearer token).
+- `senderPhone` on messages is optional, because Snap Capsule users sign in by email and may have no phone.
+- `return next(innerErr)`, so a failed step doesn't also try to send "Event created successfully".
 
 ### How Google sign-in works
 
@@ -68,6 +95,10 @@ server.js                     loads env, connects to MongoDB, starts the app
 src/app.js                    Express app (middleware, routes, error handling)
 src/config/env.js             environment validation
 src/models/User.js            Mongoose user model
+src/models/event-*.js, eventChatRoom.js, eventMessage.js, ticket-counter-luckydraw.js, folder.js
+                              event models, copied from Hora (same collections)
+src/routes/createEventInvites.js  /api/customer/event endpoints (same as Hora)
+src/utils/generateUniqueShortCode.js  7-character event short codes (from Hora)
 src/repositories/             database access (swap-able; tests use an in-memory store)
 src/services/                 Google token verification, email codes, mailer, sign-in logic
 src/routes/auth.routes.js     /api/auth endpoints
