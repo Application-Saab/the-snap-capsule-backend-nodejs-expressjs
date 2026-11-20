@@ -32,6 +32,19 @@ describe("POST /api/internal/create-event-capsule", () => {
     }
   });
 
+  test("rejects a customerId that isn't the signed-in user", async () => {
+    const { app, auth } = await signedIn();
+    const res = await request(app).post(URL).set(auth).send({ eventName: "Rahul's Wedding", eventDate: "2026-12-05", customerId: "someone-else" });
+    assert.equal(res.status, 403);
+    assert.equal(res.body.error, true);
+  });
+
+  test("getting a capsule requires a signed-in user", async () => {
+    const { app } = buildTestApp();
+    const res = await request(app).get("/api/internal/event-capsule/abc");
+    assert.equal(res.status, 401);
+  });
+
   test("rejects a missing or invalid event date", async () => {
     const { app, auth } = await signedIn();
     for (const eventDate of [undefined, "", "05-12-2026", "2026-13-40", "2026-02-31", "tomorrow"]) {
