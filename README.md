@@ -45,7 +45,7 @@ Body (all optional except `userId`; the Create Capsule screen sends `userId`, `h
   "eventType": "", "eventTime": "", "location": "", "googleMapLink": "", "fromInternational": "", "orderId": "" }
 ```
 
-`orderId` isn't in the `eventinvites` model (same as Hora's `Production` model), so it isn't saved.
+The `eventinvites` model uses `strict: false` (as in Hora), so `orderId` is saved even though it isn't a declared field, and fields that aren't sent are left out of the document.
 
 Reply (Hora format): `201 { "error": false, "status": 201, "message": "Event created successfully", "data": <event> }`, `400 Invalid userId`, `404 User not found`.
 
