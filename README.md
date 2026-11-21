@@ -95,6 +95,27 @@ Email and Google lead to the **same account** when the email matches, so users c
 | `OTP_INVALID` | Wrong code (includes `attemptsLeft`) |
 | `OTP_EXPIRED` / `OTP_TOO_MANY_ATTEMPTS` | Ask for a new code |
 
+### Sending login-code emails
+
+Without `SMTP_HOST`, login codes are only printed in this terminal (`[dev] Login code for …`); nobody receives an email. To email them, fill in the SMTP settings in `.env` and restart:
+
+| Provider | `SMTP_HOST` | `SMTP_PORT` / `SMTP_SECURE` | `SMTP_USER` | `SMTP_PASS` |
+|---|---|---|---|---|
+| Google Workspace | `smtp.gmail.com` | `465` / `true` | `support@thesnapcapsule.com` | 16-character **app password** (myaccount.google.com/apppasswords; needs 2-Step Verification on) |
+| Resend | `smtp.resend.com` | `465` / `true` | `resend` | API key (`re_…`), after verifying the domain in Resend |
+| Brevo | `smtp-relay.brevo.com` | `587` / `false` | Brevo login | SMTP key |
+
+`MAIL_FROM` is the sender, e.g. `Snap Capsule <support@thesnapcapsule.com>`.
+
+Check it:
+
+```bash
+npm run email:test -- you@example.com   # sends a sample login-code email and explains any error
+npm start                               # prints "SMTP ready: …" or "SMTP check failed: … <hint>"
+```
+
+For good delivery, add the provider's SPF and DKIM records to the domain's DNS (GoDaddy). In production the server refuses to start without `SMTP_HOST`.
+
 ## Project structure
 
 ```
@@ -110,4 +131,5 @@ src/services/                 Google token verification, email codes, mailer, si
 src/routes/auth.routes.js     /api/auth endpoints
 src/middleware/               requireAuth, error handling
 test/                         node:test + supertest
+scripts/send-test-email.js    npm run email:test: send a sample login-code email
 ```

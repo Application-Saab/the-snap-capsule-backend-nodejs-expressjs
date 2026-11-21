@@ -55,4 +55,22 @@ function createMailer(config) {
   };
 }
 
-module.exports = { createMailer, otpEmail };
+/** A plain-language hint for common SMTP errors (for logs). */
+function smtpHint(err) {
+  const msg = `${err && err.code ? err.code : ""} ${err && err.message ? err.message : ""}`;
+  if (/EAUTH|535|Username and Password not accepted|Invalid login/i.test(msg)) {
+    return "SMTP_USER / SMTP_PASS were rejected. For Google Workspace use a 16-character app password (not the normal password); for Resend use SMTP_USER=resend and the API key.";
+  }
+  if (/ETIMEDOUT|ECONNREFUSED|ECONNECTION|ESOCKET|ENOTFOUND|EDNS/i.test(msg)) {
+    return "Couldn't reach the SMTP server. Check SMTP_HOST/SMTP_PORT; if port 465 is blocked on this network, try SMTP_PORT=587 with SMTP_SECURE=false.";
+  }
+  if (/wrong version number|SSL routines|EPROTO/i.test(msg)) {
+    return "SMTP_SECURE doesn't match the port: use SMTP_SECURE=true with 465, or SMTP_SECURE=false with 587.";
+  }
+  if (/domain|not verified|sender|from address/i.test(msg)) {
+    return "The sender in MAIL_FROM isn't allowed. Verify the domain with your email provider, or use the account's own address.";
+  }
+  return "";
+}
+
+module.exports = { createMailer, otpEmail, smtpHint };

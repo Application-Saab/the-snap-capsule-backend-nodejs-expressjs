@@ -61,7 +61,8 @@ async function requestOtp({ email, otps, mailer, config, now = new Date() }) {
   try {
     await mailer.sendOtp(email, code, config.OTP_TTL_MINUTES);
   } catch (err) {
-    console.error("Failed to send login code email:", err.message);
+    const { smtpHint } = require("./mailer");
+    console.error("Failed to send login code email:", err.message, smtpHint(err));
     throw new HttpError(502, "We couldn't send the email right now. Please try again in a minute.", "EMAIL_SEND_FAILED");
   }
 
