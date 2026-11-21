@@ -23,8 +23,17 @@ function createWeblinkRouter({ config }) {
     webLink: `${config.WEB_APP_URL.replace(/\/+$/, "")}/weblink-gallery?galleryId=${encodeURIComponent(folder._id)}`,
   });
 
-  // Create Event Capsule folder: { eventName, eventDate: "YYYY-MM-DD" }
-  // Requires sign-in; the customer is the signed-in user (req.user).
+  // folderName is `${eventName}_${customerId}_${eventDate}`; this gets the
+  // event name back by removing the customer and date part.
+  const eventNameOf = (folder) => {
+    const date = folder.eventDate ? folder.eventDate.toISOString().slice(0, 10) : "";
+    const suffix = `_${folder.customerId}_${date}`;
+    return folder.folderName.endsWith(suffix) ? folder.folderName.slice(0, -suffix.length) : folder.folderName;
+  };
+
+  // Create Event Capsule folder: { eventName, eventDate: "YYYY-MM-DD", customerId }
+  // Requires sign-in; the customer is the signed-in user (req.user). If the
+  // body has a customerId, it must be the signed-in user's id.
   router.post("/create-event-capsule", async (req, res, next) => {
     try {
       const eventName = typeof req.body?.eventName === "string" ? req.body.eventName.trim() : "";
@@ -44,6 +53,9 @@ function createWeblinkRouter({ config }) {
       }
 
       const customerId = String(req.user.id);
+      if (req.body?.customerId !== undefined && String(req.body.customerId) !== customerId) {
+        return sendResponse(res, 403, true, "customerId doesn't match the signed-in user");
+      }
       // Hora: `${orderId}_${customerId}_${phoneNo}`. Snap Capsule:
       // `${eventName}_${customerId}_${eventDate}` (e.g. "Rahul's Wedding_<id>_2026-12-05").
       const folderName = `${eventName}_${customerId}_${eventDate}`;
@@ -71,6 +83,23 @@ function createWeblinkRouter({ config }) {
       return sendResponse(res, 201, false, "Event capsule created successfully", toCapsule(folder, eventName));
     } catch (error) {
       console.error("Failed to create Event Capsule folder:", error);
+      next(error);
+    }
+  });
+
+  // Get an Event Capsule by its galleryId (the folder _id in the webLink).
+  // Only the capsule's owner can open it for now.
+  router.get("/event-capsule/:galleryId", async (req, res, next) => {
+    try {
+      const folder = await FolderModel.findById(String(req.params.galleryId));
+      if (!folder || folder.customerId !== String(req.user.id)) {
+        return sendResponse(res, 404, true, "Event capsule not found");
+      }
+      return sendResponse(res, 200, false, "Event capsule found", {
+        ...toCapsule(folder, eventNameOf(folder)),
+        subFolders: folder.subFolders || [],
+      });
+    } catch (error) {
       next(error);
     }
   });
