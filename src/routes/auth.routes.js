@@ -20,7 +20,7 @@ const verifyOtpBody = z.object({
     .regex(new RegExp(`^\\d{${OTP_LENGTH}}$`)),
 });
 
-function createAuthRouter({ config, users, otps, mailer, verifyGoogleToken }) {
+function createAuthRouter({ config, users, otps, mailer, verifyGoogleToken, tracker }) {
   const router = express.Router();
   const requireAuth = createRequireAuth({ config, users });
 
@@ -31,7 +31,10 @@ function createAuthRouter({ config, users, otps, mailer, verifyGoogleToken }) {
   // in the body only to callers without an Origin header (the website's
   // server, mobile apps, Postman). A browser gets the cookie alone, so page
   // JavaScript never sees the token.
-  const issueSession = (req, res, user) => {
+  // Also links the browser's visitorId (body visitorId, X-Visitor-Id or the
+  // sc_vid cookie) to the account, for visitor tracking.
+  const issueSession = async (req, res, user, method) => {
+    if (tracker) await tracker.login(req, res, user, method);
     const token = signSessionToken(user.id, { secret: config.JWT_SECRET, expiresIn: config.JWT_EXPIRES_IN });
     setSessionCookie(res, config, token);
     const body = { success: true, user: toPublicUser(user) };
@@ -55,7 +58,7 @@ function createAuthRouter({ config, users, otps, mailer, verifyGoogleToken }) {
     }
 
     const user = await findOrCreateGoogleUser(profile, users);
-    issueSession(req, res, user);
+    await issueSession(req, res, user, "google");
   });
 
   // ── Email one-time code ───────────────────────────────────────────────
@@ -79,7 +82,7 @@ function createAuthRouter({ config, users, otps, mailer, verifyGoogleToken }) {
     const { email, code } = parsed.data;
     await verifyOtp({ email, code, otps, config });
     const user = await findOrCreateEmailUser(email, users);
-    issueSession(req, res, user);
+    await issueSession(req, res, user, "email");
   });
 
   // ── Session ───────────────────────────────────────────────────────────

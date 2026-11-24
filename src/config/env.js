@@ -54,6 +54,13 @@ const envSchema = z.object({
   SMTP_USER: optionalString,
   SMTP_PASS: optionalString,
   MAIL_FROM: z.string().default("Snap Capsule <support@thesnapcapsule.com>"),
+
+  // Secret key for the admin dashboard API (/api/admin/*), sent as the
+  // X-Admin-Key header. Leave empty to turn the admin API off. Generate with:
+  //   node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+  ADMIN_API_KEY: optionalString.refine((v) => v === undefined || v.length >= 24, {
+    message: "ADMIN_API_KEY must be at least 24 characters",
+  }),
 }).superRefine((env, ctx) => {
   if (env.NODE_ENV === "production" && !env.SMTP_HOST) {
     ctx.addIssue({ code: "custom", path: ["SMTP_HOST"], message: "SMTP_HOST is required in production to send login codes" });

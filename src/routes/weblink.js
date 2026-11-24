@@ -6,32 +6,19 @@
 const express = require("express");
 const FolderModel = require("../models/folder");
 const capsuleGenerateShortCode = require("../utils/capsuleGenerateShortCode");
+const capsuleUtils = require("../utils/capsule");
+const { visitorIdFrom } = require("../utils/visitor");
 
 const sendResponse = (res, status, error, message, data = null) =>
   res.status(status).json({ error, status, message, data });
 
-function createWeblinkRouter({ config }) {
+function createWeblinkRouter({ config, tracker }) {
   const router = express.Router();
 
-  const toCapsule = (folder, eventName) => ({
-    folderId: folder._id,
-    folderName: folder.folderName,
-    eventName,
-    eventDate: folder.eventDate ? folder.eventDate.toISOString().slice(0, 10) : null,
-    shortCode: folder.shortCode,
-    status: folder.status,
-    webLink: `${config.WEB_APP_URL.replace(/\/+$/, "")}/weblink-gallery?galleryId=${encodeURIComponent(folder._id)}`,
-  });
+  const toCapsule = (folder, eventName) => capsuleUtils.toCapsule(config, folder, eventName);
+  const { eventNameOf } = capsuleUtils;
 
-  // folderName is `${eventName}_${customerId}_${eventDate}`; this gets the
-  // event name back by removing the customer and date part.
-  const eventNameOf = (folder) => {
-    const date = folder.eventDate ? folder.eventDate.toISOString().slice(0, 10) : "";
-    const suffix = `_${folder.customerId}_${date}`;
-    return folder.folderName.endsWith(suffix) ? folder.folderName.slice(0, -suffix.length) : folder.folderName;
-  };
-
-  // Create Event Capsule folder: { eventName, eventDate: "YYYY-MM-DD", customerId }
+  // Create Event Capsule folder: { eventName, eventDate: "YYYY-MM-DD", customerId, visitorId? }
   // Requires sign-in; the customer is the signed-in user (req.user). If the
   // body has a customerId, it must be the signed-in user's id.
   router.post("/create-event-capsule", async (req, res, next) => {
@@ -67,6 +54,8 @@ function createWeblinkRouter({ config }) {
       }
 
       const shortCode = await capsuleGenerateShortCode();
+      // Browser that created it (body visitorId, X-Visitor-Id or sc_vid cookie), for the dashboard.
+      const visitorId = visitorIdFrom(req) || undefined;
 
       const folder = new FolderModel({
         folderName,
@@ -74,11 +63,13 @@ function createWeblinkRouter({ config }) {
         status: "processing",
         shortCode,
         eventDate: parsedDate,
+        visitorId,
       });
 
       await folder.save();
 
       console.log(`Event Capsule folder created for ${customerId}: ${folder._id}`);
+      if (tracker) await tracker.capsuleCreated(req, req.user, folder);
 
       return sendResponse(res, 201, false, "Event capsule created successfully", toCapsule(folder, eventName));
     } catch (error) {

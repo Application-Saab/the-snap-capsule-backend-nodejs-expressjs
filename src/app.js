@@ -6,6 +6,10 @@ const mongoose = require("mongoose");
 const { rateLimit } = require("express-rate-limit");
 const { createAuthRouter } = require("./routes/auth.routes");
 const { createWeblinkRouter } = require("./routes/weblink");
+const { createTrackRouter } = require("./routes/track.routes");
+const { createAdminRouter } = require("./routes/admin.routes");
+const { createRequireAdmin } = require("./middleware/requireAdmin");
+const { createTracker } = require("./services/tracker");
 const { createRequireAuth } = require("./middleware/requireAuth");
 const { notFound, errorHandler } = require("./middleware/errorHandler");
 
@@ -19,9 +23,11 @@ const { notFound, errorHandler } = require("./middleware/errorHandler");
  * @param {object} deps.otps              login-code repository
  * @param {object} deps.mailer            { sendOtp(email, code, ttlMinutes) }
  * @param {Function} deps.verifyGoogleToken (idToken) => Promise<profile>
+ * @param {object} deps.visitors          visitor tracking repository
  */
-function createApp({ config, users, otps, mailer, verifyGoogleToken }) {
+function createApp({ config, users, otps, mailer, verifyGoogleToken, visitors }) {
   const app = express();
+  const tracker = createTracker({ config, visitors });
 
   if (config.TRUST_PROXY) app.set("trust proxy", config.TRUST_PROXY);
 
@@ -49,11 +55,24 @@ function createApp({ config, users, otps, mailer, verifyGoogleToken }) {
     message: { success: false, message: "Too many requests. Please try again in a minute." },
   });
 
-  app.use("/api/auth", authLimiter, createAuthRouter({ config, users, otps, mailer, verifyGoogleToken }));
+  app.use("/api/auth", authLimiter, createAuthRouter({ config, users, otps, mailer, verifyGoogleToken, tracker }));
+
+  // Visitor tracking: one call per page view, signed in or not.
+  const trackLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: 300,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    message: { error: true, status: 429, message: "Too many requests. Please try again in a minute.", data: null },
+  });
+  app.use("/api/track", trackLimiter, createTrackRouter({ config, users, tracker }));
+
+  // Admin dashboard (read-only): X-Admin-Key: <ADMIN_API_KEY>.
+  app.use("/api/admin", createRequireAdmin({ config }), createAdminRouter({ visitors }));
 
   // Event Capsules (same folders collection as Hora). Requires a signed-in
   // user: Authorization: Bearer <session token>.
-  app.use("/api/internal", createRequireAuth({ config, users }), createWeblinkRouter({ config }));
+  app.use("/api/internal", createRequireAuth({ config, users }), createWeblinkRouter({ config, tracker }));
 
   app.use(notFound);
   app.use(errorHandler);

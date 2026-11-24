@@ -35,6 +35,11 @@ Optional: `PORT` (5000), `JWT_EXPIRES_IN` (`7d`), `OTP_TTL_MINUTES` (10), `CORS_
 | POST | `/api/auth/logout` | Clears the session cookie |
 | POST | `/api/internal/create-event-capsule` | Signed in. Creates an Event Capsule folder and returns its weblink (see below) |
 | GET | `/api/internal/event-capsule/:galleryId` | Signed in. Returns the signed-in user's capsule (same `data` as create, plus `subFolders`); `404` if it isn't theirs |
+| POST | `/api/track/visit` | Signed in or not. Records a page view for the visitor (see Visitor tracking) |
+| GET | `/api/admin/stats` | Admin key. Totals and last 24 hours |
+| GET | `/api/admin/capsules` | Admin key. Event Capsules with event name, date, email, visitorId and webLink |
+| GET | `/api/admin/visitors` | Admin key. Visitors with their account and capsules |
+| GET | `/api/admin/visitors/:visitorId` | Admin key. One visitor with account, capsules and activity |
 
 ### Sign-in: cookie or Bearer
 
@@ -108,6 +113,56 @@ Email and Google lead to the **same account** when the email matches, so users c
 | `OTP_INVALID` | Wrong code (includes `attemptsLeft`) |
 | `OTP_EXPIRED` / `OTP_TOO_MANY_ATTEMPTS` | Ask for a new code |
 
+## Visitor tracking
+
+Every browser that opens the website gets a **visitorId** (a random UUID), kept for a year in the `sc_vid` cookie. It works before sign-in, and is linked to the account at sign-in, so the dashboard can show who each visitor is and what they created.
+
+**How the visitorId reaches the backend.** Any request can carry it in one of three ways, checked in this order:
+1. body field `visitorId`
+2. header `X-Visitor-Id`
+3. the `sc_vid` cookie (sent automatically by the browser)
+
+It must be 8–64 letters, digits, `-` or `_`; anything else is ignored. If a request has none, the backend creates one and sets the cookie.
+
+**What gets recorded**
+
+| When | Where | What |
+|---|---|---|
+| Every page view: `POST /api/track/visit` | `visitors`, `visitorevents` (`page_view`) | First visit: landing page, referrer, UTM tags. Every visit: last page, visit count, device type, locale. Signed in: account |
+| Sign-in (Google or email code) | `visitors`, `visitorevents` (`login`) | userId, email, login method |
+| Create Event Capsule | `folders.visitorId`, `visitorevents` (`capsule_created`) | Which browser created the capsule |
+
+No IP addresses are stored. Tracking never blocks sign-in or capsule creation: if it fails, the error is logged and the request carries on.
+
+`POST /api/track/visit` body (everything optional):
+
+```json
+{
+  "visitorId": "3f1c2b9e-8d4a-4c3b-9a1e-5b6c7d8e9f00",
+  "path": "/",
+  "referrer": "https://www.google.com/",
+  "locale": "en-IN",
+  "utm": { "source": "instagram", "medium": "social", "campaign": "launch" }
+}
+```
+
+Response: `{ "error": false, "status": 200, "message": "Visit recorded", "data": { "visitorId": "…", "isNew": true, "signedIn": false } }`. Only the path is kept (no query string, so gallery IDs in URLs aren't stored). Browser requests must come from `CORS_ORIGINS`, like sign-in.
+
+**Admin dashboard API.** Read-only, turned on by setting `ADMIN_API_KEY` (at least 24 characters) and sent as the `X-Admin-Key` header. Call it from your dashboard's server or Postman, never from JavaScript in a visitor's browser, where anyone could read the key. Without `ADMIN_API_KEY` these routes answer `404`.
+
+```bash
+curl -H "X-Admin-Key: $ADMIN_API_KEY" "https://thesnapcapsule.com/api/admin/capsules?search=rahul@&page=1&limit=20"
+```
+
+Lists accept `page` (default 1), `limit` (default 20, max 100), `search`, and `from` / `to` dates (`2026-11-01`; a plain `to` date includes the whole day).
+
+- `/api/admin/capsules`: one row per capsule, newest first: `eventName`, `eventDate`, `email`, `name`, `customerId`, `visitorId`, `webLink`, `shortCode`, `status`, `createdAt`. `search` matches event name, shortCode, visitorId or email.
+- `/api/admin/visitors`: one row per visitor, most recently active first, with `user` (`email`, `name`) and the `capsules` created from that browser. `search` matches visitorId or email; `signedIn=true|false` filters.
+- `/api/admin/visitors/:visitorId`: the same plus `events` (latest 100, newest first).
+- `/api/admin/stats`: `visitors`, `signedInVisitors`, `activeVisitors24h`, `newVisitors24h`, `logins24h`, `capsules`, `capsules24h`.
+
+Folders with an `orderId` (Hora orders) are left out, in case both apps share a database.
+
 ## Project structure
 
 ```
@@ -115,12 +170,17 @@ server.js                     loads env, connects to MongoDB, starts the app
 src/app.js                    Express app (middleware, routes, error handling)
 src/config/env.js             environment validation
 src/models/User.js            Mongoose user model
-src/models/folder.js          Event Capsule folder model, copied from Hora (same collection)
+src/models/folder.js          Event Capsule folder model, copied from Hora (same collection; adds visitorId)
+src/models/Visitor.js         one row per browser (visitorId), linked to the account at sign-in
+src/models/VisitorEvent.js    page views, sign-ins and capsules per visitor
+src/routes/track.routes.js    /api/track/visit
+src/routes/admin.routes.js    /api/admin dashboard endpoints (X-Admin-Key)
+src/services/tracker.js       visitor tracking (never blocks sign-in or capsule creation)
 src/routes/weblink.js         /api/internal endpoints (create Event Capsule)
 src/utils/capsuleGenerateShortCode.js  7-character capsule short codes (from Hora)
 src/repositories/             database access (swap-able; tests use an in-memory store)
 src/services/                 Google token verification, email codes, mailer, sign-in logic
 src/routes/auth.routes.js     /api/auth endpoints
-src/middleware/               requireAuth, error handling
+src/middleware/               requireAuth, requireAdmin, origin check, error handling
 test/                         node:test + supertest
 ```

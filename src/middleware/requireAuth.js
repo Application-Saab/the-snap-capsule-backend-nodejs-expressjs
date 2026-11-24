@@ -42,4 +42,20 @@ function createRequireAuth({ config, users }) {
   };
 }
 
-module.exports = { createRequireAuth };
+/**
+ * The signed-in user for a request, or null (no token, expired, unknown
+ * user). For routes that work signed in or not, like visitor tracking.
+ */
+async function resolveSessionUser(req, { config, users }) {
+  const header = req.get("authorization") || "";
+  const [scheme, bearer] = header.split(" ");
+  const token = (scheme === "Bearer" && bearer) || readCookie(req, SESSION_COOKIE);
+  if (!token) return null;
+  try {
+    return await users.findById(verifySessionToken(token, { secret: config.JWT_SECRET }));
+  } catch {
+    return null;
+  }
+}
+
+module.exports = { createRequireAuth, resolveSessionUser };
