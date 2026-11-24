@@ -21,19 +21,32 @@ Required environment variables (the server refuses to start without them):
 
 Required in production: `SMTP_HOST` (plus `SMTP_USER`, `SMTP_PASS`, `SMTP_PORT`, `SMTP_SECURE`, `MAIL_FROM`) for sending login codes. In development, leave `SMTP_HOST` empty and codes are printed in the terminal.
 
-Optional: `PORT` (5000), `JWT_EXPIRES_IN` (`7d`), `OTP_TTL_MINUTES` (10), `CORS_ORIGINS`, `TRUST_PROXY`, `WEB_APP_URL` (`https://thesnapcapsule.com`, used to build capsule weblinks). See `.env.example`.
+Optional: `PORT` (5000), `JWT_EXPIRES_IN` (`7d`), `OTP_TTL_MINUTES` (10), `CORS_ORIGINS` (your website's addresses; also used for cross-site protection, see "Sign-in: cookie or Bearer"), `TRUST_PROXY`, `WEB_APP_URL` (`https://thesnapcapsule.com`, used to build capsule weblinks). See `.env.example`.
 
 ## Endpoints
 
 | Method | Path | Description |
 |---|---|---|
 | GET | `/api/health` | Server and database status |
-| POST | `/api/auth/google` | Body `{ "credential": "<Google ID token>" }`. Verifies the token with Google, finds or creates the user, returns `{ token, user }` |
+| POST | `/api/auth/google` | Body `{ "credential": "<Google ID token>" }`. Verifies the token with Google, finds or creates the user, sets the session cookie, returns `{ user }` (+ `token`, see below) |
 | POST | `/api/auth/email/request-otp` | Body `{ "email" }`. Emails a 4-digit code (valid 10 minutes). Response includes `codeLength: 4` |
-| POST | `/api/auth/email/verify-otp` | Body `{ "email", "code" }`. Checks the code, finds or creates the user, returns `{ token, user }` |
-| GET | `/api/auth/me` | Header `Authorization: Bearer <token>`. Returns the signed-in user |
-| POST | `/api/internal/create-event-capsule` | Header `Authorization: Bearer <token>`. Creates an Event Capsule folder and returns its weblink (see below) |
-| GET | `/api/internal/event-capsule/:galleryId` | Header `Authorization: Bearer <token>`. Returns the signed-in user's capsule (same `data` as create, plus `subFolders`); `404` if it isn't theirs |
+| POST | `/api/auth/email/verify-otp` | Body `{ "email", "code" }`. Checks the code, finds or creates the user, sets the session cookie, returns `{ user }` (+ `token`, see below) |
+| GET | `/api/auth/me` | Signed in (cookie or Bearer). Returns the signed-in user |
+| POST | `/api/auth/logout` | Clears the session cookie |
+| POST | `/api/internal/create-event-capsule` | Signed in. Creates an Event Capsule folder and returns its weblink (see below) |
+| GET | `/api/internal/event-capsule/:galleryId` | Signed in. Returns the signed-in user's capsule (same `data` as create, plus `subFolders`); `404` if it isn't theirs |
+
+### Sign-in: cookie or Bearer
+
+Like Hora, the website calls this API directly on its own domain (`https://thesnapcapsule.com/api/*` → this backend, via the web server). Unlike Hora, the login isn't kept in `localStorage`:
+
+- **Browser (website):** login sets an **httpOnly** cookie `sc_session` (`SameSite=Lax`, `Secure` in production, expires with the token, 7 days). Page JavaScript can't read it, and the browser sends it with every `/api` request. When a request has an `Origin` header (a browser), the token is **not** returned in the body.
+- **Servers, apps, Postman:** requests without an `Origin` also get `token` in the body; send it as `Authorization: Bearer <token>`.
+- **"Signed in"** means either the cookie or the Bearer header. The website's server-rendered pages forward the cookie when calling the API.
+- **Cross-site protection:** a browser request that changes something (POST/PUT/PATCH/DELETE) must come from one of `CORS_ORIGINS` (checked via `Origin`, or `Referer`). Cookie-signed-in POSTs without either are refused. Otherwise: `403 FORBIDDEN_ORIGIN`. Bearer requests don't need an `Origin`.
+- `POST /api/auth/logout` clears the cookie.
+
+**`CORS_ORIGINS` must list the live site**, e.g. `https://thesnapcapsule.com,https://www.thesnapcapsule.com`, or the website's logins and Create Capsule are refused.
 
 ### Create Event Capsule (follows Hora)
 

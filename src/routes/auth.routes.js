@@ -5,6 +5,8 @@ const { requestOtp, verifyOtp, OTP_LENGTH } = require("../services/otpService");
 const { signSessionToken } = require("../utils/sessionToken");
 const { createRequireAuth } = require("../middleware/requireAuth");
 const { HttpError } = require("../utils/httpError");
+const { setSessionCookie, clearSessionCookie } = require("../utils/sessionCookie");
+const { createOriginCheck } = require("../middleware/originCheck");
 
 const emailField = z.string().trim().toLowerCase().max(254).pipe(z.email());
 
@@ -22,14 +24,23 @@ function createAuthRouter({ config, users, otps, mailer, verifyGoogleToken }) {
   const router = express.Router();
   const requireAuth = createRequireAuth({ config, users });
 
-  const issueSession = (user) => ({
-    success: true,
-    token: signSessionToken(user.id, { secret: config.JWT_SECRET, expiresIn: config.JWT_EXPIRES_IN }),
-    user: toPublicUser(user),
-  });
+  // Login requests (and logout) from a browser must come from our own sites.
+  router.use(createOriginCheck({ config }));
+
+  // Signs the user in: sets the httpOnly session cookie, and returns the token
+  // in the body only to callers without an Origin header (the website's
+  // server, mobile apps, Postman). A browser gets the cookie alone, so page
+  // JavaScript never sees the token.
+  const issueSession = (req, res, user) => {
+    const token = signSessionToken(user.id, { secret: config.JWT_SECRET, expiresIn: config.JWT_EXPIRES_IN });
+    setSessionCookie(res, config, token);
+    const body = { success: true, user: toPublicUser(user) };
+    if (!req.get("origin")) body.token = token;
+    return res.status(200).json(body);
+  };
 
   // ── Google ────────────────────────────────────────────────────────────
-  // POST /api/auth/google  { credential: "<Google ID token>" } → { token, user }
+  // POST /api/auth/google  { credential: "<Google ID token>" } → cookie + { user } (+ token, see issueSession)
   router.post("/google", async (req, res) => {
     const parsed = googleBody.safeParse(req.body);
     if (!parsed.success) {
@@ -44,7 +55,7 @@ function createAuthRouter({ config, users, otps, mailer, verifyGoogleToken }) {
     }
 
     const user = await findOrCreateGoogleUser(profile, users);
-    res.status(200).json(issueSession(user));
+    issueSession(req, res, user);
   });
 
   // ── Email one-time code ───────────────────────────────────────────────
@@ -68,13 +79,19 @@ function createAuthRouter({ config, users, otps, mailer, verifyGoogleToken }) {
     const { email, code } = parsed.data;
     await verifyOtp({ email, code, otps, config });
     const user = await findOrCreateEmailUser(email, users);
-    res.status(200).json(issueSession(user));
+    issueSession(req, res, user);
   });
 
   // ── Session ───────────────────────────────────────────────────────────
-  // GET /api/auth/me  (Authorization: Bearer <token>) → { user }
+  // GET /api/auth/me  (session cookie or Authorization: Bearer <token>) → { user }
   router.get("/me", requireAuth, (req, res) => {
     res.status(200).json({ success: true, user: toPublicUser(req.user) });
+  });
+
+  // POST /api/auth/logout → clears the session cookie (always succeeds).
+  router.post("/logout", (req, res) => {
+    clearSessionCookie(res, config);
+    res.status(200).json({ success: true, message: "Signed out." });
   });
 
   return router;
