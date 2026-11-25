@@ -132,6 +132,17 @@ describe("GET /api/admin/users", () => {
     assert.deepEqual(byId["anon-visitor-0001"].capsules, []);
   });
 
+  test("search, date check and summary", async () => {
+    const { app } = withAdmin();
+    await request(app).post("/api/auth/google").set("Origin", SITE).send({ credential: "token-asha", visitorId: VID });
+    await request(app).post(VISIT).set("Origin", SITE).send({ visitorId: "anon-visitor-0001" });
+    const res = await request(app).get("/api/admin/users?search=asha@").set("Authorization", horaToken());
+    assert.equal(res.body.data.total, 1);
+    assert.equal(res.body.data.items[0].visitorId, VID);
+    assert.deepEqual(res.body.data.summary, { visitors: 2, loggedInVisitors: 1, capsules: 0 });
+    assert.equal((await request(app).get("/api/admin/users?from=yesterday").set("Authorization", horaToken())).status, 400);
+  });
+
   test("page and limit", async () => {
     const { app } = withAdmin();
     const res = await request(app).get("/api/admin/users?page=2&limit=500").set("Authorization", `Bearer ${horaToken()}`);

@@ -126,7 +126,12 @@ Tracking never blocks login: if it fails, the error is logged and login carries 
 
 ### `GET /api/admin/users`
 
-For the admin panel. Send the admin panel's login token (`localStorage.authToken`, from Hora's `/api/admin/admin_signin`) in the `Authorization` header, bare or as `Bearer <token>`. It's checked with `HORA_JWT_SECRET` and must have `role: "admin"`. Optional query: `page` (default 1) and `limit` (default 20, max 100). Newest activity comes first.
+For the admin panel. Send the admin panel's login token (`localStorage.authToken`, from Hora's `/api/admin/admin_signin`) in the `Authorization` header, bare or as `Bearer <token>`. It's checked with `HORA_JWT_SECRET` and must have `role: "admin"`. Optional query:
+- `page` (default 1) and `limit` (default 20, max 100)
+- `search`: email, visitor ID, event name or short code
+- `from` / `to`: dates like `2026-11-24`, for when the visitor was last on the website (a plain `to` date includes the whole day)
+
+Newest activity comes first. `summary` has the totals for the cards on the admin page. It covers the whole site and isn't affected by filters.
 
 ```json
 {
@@ -151,7 +156,8 @@ For the admin panel. Send the admin panel's login token (`localStorage.authToken
       },
       { "visitorId": "anon-visitor-1234", "email": null, "capsules": [] }
     ],
-    "total": 2, "page": 1, "limit": 20
+    "total": 2, "page": 1, "limit": 20,
+    "summary": { "visitors": 2, "newVisitors24h": 2, "loggedInVisitors": 1, "activeVisitors24h": 2, "capsules": 1, "capsules24h": 1 }
   }
 }
 ```

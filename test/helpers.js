@@ -118,12 +118,17 @@ function createMemoryVisitorRepository() {
       }
       rows.set(visitorId, row);
     },
-    async listUsers({ page, limit }) {
-      const all = [...rows.values()];
+    async listUsers({ page, limit, search }) {
+      let all = [...rows.values()];
+      if (search) all = all.filter((v) => v.visitorId === search || (v.email || "").includes(search.toLowerCase()));
       const items = all
         .slice((page - 1) * limit, page * limit)
         .map((v) => ({ visitorId: v.visitorId, email: v.email || null, capsules: [] }));
       return { items, total: all.length, page, limit };
+    },
+    async summary() {
+      const all = [...rows.values()];
+      return { visitors: all.length, loggedInVisitors: all.filter((v) => v.email).length, capsules: 0 };
     },
   };
 }

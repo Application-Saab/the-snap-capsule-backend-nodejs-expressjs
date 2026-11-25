@@ -8,6 +8,39 @@ const { toCapsule } = require("../utils/capsule");
 // Snap Capsule folders never have an orderId (Hora's always do), so this
 // keeps Hora folders out if both apps share a database.
 const SNAP_CAPSULE_FOLDERS = { orderId: { $exists: false } };
+const DAY_MS = 24 * 60 * 60 * 1000;
+const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// Visitors matching `search` (email, visitor ID, or one of their capsules'
+// event name / short code) and active between `from` and `to`.
+async function visitorFilter({ search, from, to }) {
+  const filter = {};
+  if (from || to) {
+    filter.lastSeenAt = {};
+    if (from) filter.lastSeenAt.$gte = from;
+    if (to) filter.lastSeenAt.$lte = to;
+  }
+  if (search) {
+    const folders = await FolderModel.find(
+      {
+        ...SNAP_CAPSULE_FOLDERS,
+        $or: [{ folderName: { $regex: escapeRegex(search), $options: "i" } }, { shortCode: search }],
+      },
+      { visitorId: 1, customerId: 1 }
+    ).lean();
+    filter.$or = [
+      { visitorId: search },
+      { email: { $regex: escapeRegex(search.toLowerCase()) } },
+      ...(folders.length
+        ? [
+            { visitorId: { $in: folders.map((f) => f.visitorId).filter(Boolean) } },
+            { userId: { $in: folders.map((f) => f.customerId).filter(Boolean) } },
+          ]
+        : []),
+    ];
+  }
+  return filter;
+}
 
 function createMongoVisitorRepository({ config }) {
   return {
@@ -31,10 +64,11 @@ function createMongoVisitorRepository({ config }) {
      * { visitorId, email, capsules: [...] }. Capsules are the ones created
      * from this browser, plus (if logged in) all of that account's capsules.
      */
-    async listUsers({ page, limit }) {
+    async listUsers({ page, limit, search = "", from, to }) {
+      const filter = await visitorFilter({ search, from, to });
       const [total, rows] = await Promise.all([
-        Visitor.countDocuments({}),
-        Visitor.find({}).sort({ lastSeenAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+        Visitor.countDocuments(filter),
+        Visitor.find(filter).sort({ lastSeenAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
       ]);
       const visitorIds = rows.map((v) => v.visitorId);
       const userIds = [...new Set(rows.map((v) => v.userId).filter(Boolean))];
@@ -54,6 +88,20 @@ function createMongoVisitorRepository({ config }) {
           .map((f) => ({ ...toCapsule(config, f), createdAt: f.createdAt })),
       }));
       return { items, total, page, limit };
+    },
+
+    /** Totals for the admin page's summary cards. */
+    async summary({ now }) {
+      const since = new Date(now.getTime() - DAY_MS);
+      const [visitors, newVisitors24h, loggedInVisitors, activeVisitors24h, capsules, capsules24h] = await Promise.all([
+        Visitor.countDocuments({}),
+        Visitor.countDocuments({ firstSeenAt: { $gte: since } }),
+        Visitor.countDocuments({ email: { $exists: true } }),
+        Visitor.countDocuments({ lastSeenAt: { $gte: since } }),
+        FolderModel.countDocuments(SNAP_CAPSULE_FOLDERS),
+        FolderModel.countDocuments({ ...SNAP_CAPSULE_FOLDERS, createdAt: { $gte: since } }),
+      ]);
+      return { visitors, newVisitors24h, loggedInVisitors, activeVisitors24h, capsules, capsules24h };
     },
   };
 }
