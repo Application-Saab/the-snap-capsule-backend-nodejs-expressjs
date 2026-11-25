@@ -84,7 +84,7 @@ function loadEnv(source = process.env) {
   const env = result.data;
   return {
     ...env,
-    corsOrigins: list(env.CORS_ORIGINS),
+    corsOrigins: list(env.CORS_ORIGINS).map((origin) => origin.replace(/\/+$/, "")),
     adminOrigins: list(env.ADMIN_ORIGINS).map((origin) => origin.replace(/\/+$/, "")),
   };
 }

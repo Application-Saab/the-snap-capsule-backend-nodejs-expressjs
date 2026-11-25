@@ -19,6 +19,14 @@ function requestOrigin(req) {
 
 const isAllowedOrigin = (config, origin) => config.corsOrigins.includes(origin);
 
+// Logged on the server so a wrong CORS_ORIGINS is easy to spot.
+function logRefused(config, origin, req) {
+  console.warn(
+    `Refused ${req.method} ${req.originalUrl} from "${origin || "(no origin)"}". ` +
+      `Allowed (CORS_ORIGINS): ${config.corsOrigins.join(", ") || "(none)"}`
+  );
+}
+
 /**
  * Blocks cross-site requests that change something: a POST/PUT/PATCH/DELETE
  * sent by a browser from another website (it has an Origin that isn't in
@@ -30,10 +38,11 @@ function createOriginCheck({ config }) {
     if (SAFE_METHODS.has(req.method)) return next();
     const origin = requestOrigin(req);
     if (origin && !isAllowedOrigin(config, origin)) {
+      logRefused(config, origin, req);
       return next(new HttpError(403, "This request isn't allowed from this website.", "FORBIDDEN_ORIGIN"));
     }
     return next();
   };
 }
 
-module.exports = { createOriginCheck, requestOrigin, isAllowedOrigin, SAFE_METHODS };
+module.exports = { createOriginCheck, requestOrigin, isAllowedOrigin, logRefused, SAFE_METHODS };

@@ -184,4 +184,10 @@ describe("config", () => {
     assert.equal(env.HORA_JWT_SECRET, "abc");
     assert.deepEqual(env.adminOrigins, ["https://admin.example.com", "https://b.example.com"]);
   });
+
+  test("CORS_ORIGINS ignores spaces and a trailing slash", () => {
+    const base = { MONGODB_URI: "mongodb://localhost/test", GOOGLE_CLIENT_ID: "x.apps.googleusercontent.com", JWT_SECRET: "a".repeat(40) };
+    const env = loadEnv({ ...base, CORS_ORIGINS: " https://thesnapcapsule.com/ , http://localhost:3000 " });
+    assert.deepEqual(env.corsOrigins, ["https://thesnapcapsule.com", "http://localhost:3000"]);
+  });
 });

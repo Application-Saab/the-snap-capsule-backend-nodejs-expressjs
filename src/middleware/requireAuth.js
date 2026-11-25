@@ -1,7 +1,7 @@
 const { verifySessionToken } = require("../utils/sessionToken");
 const { HttpError } = require("../utils/httpError");
 const { SESSION_COOKIE, readCookie } = require("../utils/sessionCookie");
-const { requestOrigin, isAllowedOrigin, SAFE_METHODS } = require("./originCheck");
+const { requestOrigin, isAllowedOrigin, logRefused, SAFE_METHODS } = require("./originCheck");
 
 // Protects a route and puts the signed-in user on req.user. The session
 // token is read from `Authorization: Bearer <token>` (servers, apps,
@@ -22,6 +22,7 @@ function createRequireAuth({ config, users }) {
     }
 
     if (!fromHeader && !SAFE_METHODS.has(req.method) && !isAllowedOrigin(config, requestOrigin(req))) {
+      logRefused(config, requestOrigin(req), req);
       return next(new HttpError(403, "This request isn't allowed from this website.", "FORBIDDEN_ORIGIN"));
     }
 
