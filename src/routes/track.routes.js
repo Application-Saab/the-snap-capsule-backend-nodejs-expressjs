@@ -12,17 +12,15 @@ function createTrackRouter({ config, users, tracker }) {
   // Browser requests must come from our own sites (like login).
   router.use(createOriginCheck({ config }));
 
-  // POST /api/track/visit
-  // Body (all optional):
-  //   { visitorId, path: "/", referrer, locale: "en-IN",
-  //     utm: { source, medium, campaign, term, content } }
+  // POST /api/track/visit  { visitorId }
   // visitorId can also come from the X-Visitor-Id header or the sc_vid cookie.
   // If there is none, a new one is created and saved in the sc_vid cookie.
-  // → { data: { visitorId, isNew, signedIn } }
+  // If the visitor is logged in, their email is saved with it.
+  // → { data: { visitorId, signedIn } }
   router.post("/visit", async (req, res) => {
     const user = await resolveSessionUser(req, { config, users });
-    const { visitorId, isNew } = await tracker.recordVisit(req, res, user);
-    return sendResponse(res, 200, false, "Visit recorded", { visitorId, isNew, signedIn: Boolean(user) });
+    const visitorId = await tracker.recordVisit(req, res, user);
+    return sendResponse(res, 200, false, "Visitor saved", { visitorId, signedIn: Boolean(user) });
   });
 
   return router;

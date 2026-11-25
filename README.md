@@ -35,12 +35,8 @@ Optional: `PORT` (5000), `JWT_EXPIRES_IN` (`7d`), `OTP_TTL_MINUTES` (10), `CORS_
 | POST | `/api/auth/logout` | Clears the session cookie |
 | POST | `/api/internal/create-event-capsule` | Signed in. Creates an Event Capsule folder and returns its weblink (see below) |
 | GET | `/api/internal/event-capsule/:galleryId` | Signed in. Returns the signed-in user's capsule (same `data` as create, plus `subFolders`); `404` if it isn't theirs |
-| POST | `/api/track/visit` | Signed in or not. Records a page view for the visitor (see Visitor tracking) |
-| GET | `/api/admin/me` | Admin panel token. The admin from the token |
-| GET | `/api/admin/stats` | Admin panel token. Totals and last 24 hours |
-| GET | `/api/admin/capsules` | Admin panel token. Event Capsules with event name, date, email, visitorId and webLink |
-| GET | `/api/admin/visitors` | Admin panel token. Visitors with their account and capsules |
-| GET | `/api/admin/visitors/:visitorId` | Admin panel token. One visitor with account, capsules and activity |
+| POST | `/api/track/visit` | Saves the visitor (see Visitor tracking) |
+| GET | `/api/admin/users` | Admin panel token. Visitors with email and capsules |
 
 ### Sign-in: cookie or Bearer
 
@@ -116,40 +112,51 @@ Email and Google lead to the **same account** when the email matches, so users c
 
 ## Visitor tracking
 
-Every browser that opens the website gets a **visitorId** (a random UUID), kept for a year in the `sc_vid` cookie. It works before sign-in, and is linked to the account at sign-in, so the dashboard can show who each visitor is and what they created.
+Every browser that opens the website gets a **visitorId** (a random UUID) in the `sc_vid` cookie, kept for a year. When the visitor logs in, the visitorId is linked to their email, and capsules they create save the same visitorId. The admin panel reads it all with one API.
 
-**How the visitorId reaches the backend.** Any request can carry it in one of three ways, checked in this order:
-1. body field `visitorId`
-2. header `X-Visitor-Id`
-3. the `sc_vid` cookie (sent automatically by the browser)
+**How the visitorId reaches the backend**, checked in this order: body field `visitorId`, header `X-Visitor-Id`, or the `sc_vid` cookie. It must be 8–64 letters, digits, `-` or `_`. If a request has none, the backend creates one and sets the cookie.
 
-It must be 8–64 letters, digits, `-` or `_`; anything else is ignored. If a request has none, the backend creates one and sets the cookie.
+| When | Saved |
+|---|---|
+| `POST /api/track/visit` `{ visitorId }` (website load) | `visitors`: visitorId, and email if logged in |
+| Login (Google or email code) | `visitors`: userId + email |
+| Create Event Capsule | `folders.visitorId` |
 
-**What gets recorded**
+Tracking never blocks login: if it fails, the error is logged and login carries on.
 
-| When | Where | What |
-|---|---|---|
-| Every page view: `POST /api/track/visit` | `visitors`, `visitorevents` (`page_view`) | First visit: landing page, referrer, UTM tags. Every visit: last page, visit count, device type, locale. Signed in: account |
-| Sign-in (Google or email code) | `visitors`, `visitorevents` (`login`) | userId, email, login method |
-| Create Event Capsule | `folders.visitorId`, `visitorevents` (`capsule_created`) | Which browser created the capsule |
+### `GET /api/admin/users`
 
-No IP addresses are stored. Tracking never blocks sign-in or capsule creation: if it fails, the error is logged and the request carries on.
-
-`POST /api/track/visit` body (everything optional):
+For the admin panel. Send the admin panel's login token (`localStorage.authToken`, from Hora's `/api/admin/admin_signin`) in the `Authorization` header, bare or as `Bearer <token>`. It's checked with `HORA_JWT_SECRET` and must have `role: "admin"`. Optional query: `page` (default 1) and `limit` (default 20, max 100). Newest activity comes first.
 
 ```json
 {
-  "visitorId": "3f1c2b9e-8d4a-4c3b-9a1e-5b6c7d8e9f00",
-  "path": "/",
-  "referrer": "https://www.google.com/",
-  "locale": "en-IN",
-  "utm": { "source": "instagram", "medium": "social", "campaign": "launch" }
+  "error": false, "status": 200, "message": "Users",
+  "data": {
+    "items": [
+      {
+        "visitorId": "11111111-2222-4333-8444-555555555555",
+        "email": "rahul@example.com",
+        "capsules": [
+          {
+            "folderId": "6b0683c8287f99fded29d622",
+            "folderName": "Rahul's Wedding_6b0683c8287f99fded29d621_2026-12-05",
+            "eventName": "Rahul's Wedding",
+            "eventDate": "2026-12-05",
+            "shortCode": "PshzzA8",
+            "status": "processing",
+            "webLink": "https://thesnapcapsule.com/weblink-gallery?galleryId=6b0683c8287f99fded29d622",
+            "createdAt": "2026-11-25T06:44:24.707Z"
+          }
+        ]
+      },
+      { "visitorId": "anon-visitor-1234", "email": null, "capsules": [] }
+    ],
+    "total": 2, "page": 1, "limit": 20
+  }
 }
 ```
 
-Response: `{ "error": false, "status": 200, "message": "Visit recorded", "data": { "visitorId": "…", "isNew": true, "signedIn": false } }`. Only the path is kept (no query string, so gallery IDs in URLs aren't stored). Browser requests must come from `CORS_ORIGINS`, like sign-in.
-
-**Admin dashboard.** The team logs in on the admin panel as usual (Hora's `/api/admin/admin_signin`). The panel keeps that token (`localStorage.authToken`) and sends it to these endpoints in the `Authorization` header, either bare or as `Bearer <token>`. This server checks the token with `HORA_JWT_SECRET`, the same secret Hora signs it with, and only accepts `role: "admin"`. There's no separate dashboard login.
+`email` is `null` if the visitor never logged in. `capsules` holds the capsules created from that browser, plus all of the account's capsules once logged in. Folders with an `orderId` (Hora orders) are left out.
 
 Settings (backend `.env`):
 
@@ -158,24 +165,9 @@ HORA_JWT_SECRET=<the secret Hora signs admin tokens with>
 ADMIN_ORIGINS=https://<the admin panel's website>
 ```
 
-`ADMIN_ORIGINS` lets the admin panel's website call these endpoints from the browser (CORS). Without `HORA_JWT_SECRET` the dashboard endpoints answer `404`. A customer's website session can't open them.
+`ADMIN_ORIGINS` lets the admin panel's website call the API from the browser (CORS). Without `HORA_JWT_SECRET` the API answers `404`.
 
-> **Security:** these endpoints are only as safe as `HORA_JWT_SECRET`. Hora currently signs tokens with a short secret written in its public code, so anyone could make an admin token. Move Hora's secret to a long random value in its `.env` and use the same value here. The server logs a warning at startup while the secret is under 32 characters.
-
-`GET /api/admin/me` returns the admin from the token, which is useful to check the setup.
-
-```bash
-curl -H "Authorization: $AUTH_TOKEN" "https://thesnapcapsule.com/api/admin/capsules?search=rahul@&page=1&limit=20"
-```
-
-Lists accept `page` (default 1), `limit` (default 20, max 100), `search`, and `from` / `to` dates (`2026-11-01`; a plain `to` date includes the whole day).
-
-- `/api/admin/capsules`: one row per capsule, newest first: `eventName`, `eventDate`, `email`, `name`, `customerId`, `visitorId`, `webLink`, `shortCode`, `status`, `createdAt`. `search` matches event name, shortCode, visitorId or email.
-- `/api/admin/visitors`: one row per visitor, most recently active first, with `user` (`email`, `name`) and the `capsules` created from that browser. `search` matches visitorId or email; `signedIn=true|false` filters.
-- `/api/admin/visitors/:visitorId`: the same plus `events` (latest 100, newest first).
-- `/api/admin/stats`: `visitors`, `signedInVisitors`, `activeVisitors24h`, `newVisitors24h`, `logins24h`, `capsules`, `capsules24h`.
-
-Folders with an `orderId` (Hora orders) are left out, in case both apps share a database.
+> **Security:** the API is only as safe as `HORA_JWT_SECRET`. Hora currently signs tokens with a short secret written in its public code, so anyone could make an admin token. Move Hora's secret to a long random value in its `.env` and use the same value here. The server logs a warning at startup while the secret is under 32 characters.
 
 ## Project structure
 
@@ -186,10 +178,9 @@ src/config/env.js             environment validation
 src/models/User.js            Mongoose user model
 src/models/folder.js          Event Capsule folder model, copied from Hora (same collection; adds visitorId)
 src/models/Visitor.js         one row per browser (visitorId), linked to the account at sign-in
-src/models/VisitorEvent.js    page views, sign-ins and capsules per visitor
 src/routes/track.routes.js    /api/track/visit
-src/routes/admin.routes.js    /api/admin dashboard data (read-only)
-src/services/tracker.js       visitor tracking (never blocks sign-in or capsule creation)
+src/routes/admin.routes.js    GET /api/admin/users (admin panel)
+src/services/tracker.js       visitor tracking (never blocks login)
 src/routes/weblink.js         /api/internal endpoints (create Event Capsule)
 src/utils/capsuleGenerateShortCode.js  7-character capsule short codes (from Hora)
 src/repositories/             database access (swap-able; tests use an in-memory store)

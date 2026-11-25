@@ -74,7 +74,7 @@ function createApp({ config, users, otps, mailer, verifyGoogleToken, visitors })
 
   // Event Capsules (same folders collection as Hora). Requires a signed-in
   // user: Authorization: Bearer <session token>.
-  app.use("/api/internal", createRequireAuth({ config, users }), createWeblinkRouter({ config, tracker }));
+  app.use("/api/internal", createRequireAuth({ config, users }), createWeblinkRouter({ config }));
 
   app.use(notFound);
   app.use(errorHandler);

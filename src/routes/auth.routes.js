@@ -34,7 +34,7 @@ function createAuthRouter({ config, users, otps, mailer, verifyGoogleToken, trac
   // Also links the browser's visitorId (body visitorId, X-Visitor-Id or the
   // sc_vid cookie) to the account, for visitor tracking.
   const issueSession = async (req, res, user, method) => {
-    if (tracker) await tracker.login(req, res, user, method);
+    if (tracker) await tracker.login(req, res, user);
     const token = signSessionToken(user.id, { secret: config.JWT_SECRET, expiresIn: config.JWT_EXPIRES_IN });
     setSessionCookie(res, config, token);
     const body = { success: true, user: toPublicUser(user) };

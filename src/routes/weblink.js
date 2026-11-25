@@ -12,7 +12,7 @@ const { visitorIdFrom } = require("../utils/visitor");
 const sendResponse = (res, status, error, message, data = null) =>
   res.status(status).json({ error, status, message, data });
 
-function createWeblinkRouter({ config, tracker }) {
+function createWeblinkRouter({ config }) {
   const router = express.Router();
 
   const toCapsule = (folder, eventName) => capsuleUtils.toCapsule(config, folder, eventName);
@@ -54,7 +54,7 @@ function createWeblinkRouter({ config, tracker }) {
       }
 
       const shortCode = await capsuleGenerateShortCode();
-      // Browser that created it (body visitorId, X-Visitor-Id or sc_vid cookie), for the dashboard.
+      // Browser that created it (body visitorId, X-Visitor-Id or sc_vid cookie), for the admin panel.
       const visitorId = visitorIdFrom(req) || undefined;
 
       const folder = new FolderModel({
@@ -69,7 +69,6 @@ function createWeblinkRouter({ config, tracker }) {
       await folder.save();
 
       console.log(`Event Capsule folder created for ${customerId}: ${folder._id}`);
-      if (tracker) await tracker.capsuleCreated(req, req.user, folder);
 
       return sendResponse(res, 201, false, "Event capsule created successfully", toCapsule(folder, eventName));
     } catch (error) {

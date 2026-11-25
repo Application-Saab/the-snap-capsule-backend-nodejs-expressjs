@@ -99,64 +99,31 @@ function createMemoryUserRepository() {
 }
 
 // In-memory stand-in for the MongoDB visitor repository. Capsules (folders)
-// need a real database, so the dashboard lists here have none.
+// need a real database, so users here have none.
 function createMemoryVisitorRepository() {
   const rows = new Map();
-  const events = [];
-  const clone = (v) => (v ? JSON.parse(JSON.stringify(v)) : null);
   return {
     rows,
-    events,
     failNext: false,
-    async recordVisit({ visitorId, now, path, referrer, utm, userAgent, deviceType, locale, user }) {
-      let row = rows.get(visitorId);
-      const isNew = !row;
-      if (!row) {
-        row = { visitorId, firstSeenAt: now, landingPage: path, referrer, utm, visitCount: 0, userIds: [] };
-        rows.set(visitorId, row);
-      }
-      Object.assign(row, { lastSeenAt: now, lastPage: path, userAgent, deviceType });
-      if (locale) row.locale = locale;
-      row.visitCount += 1;
-      if (user) {
-        row.userId = user.id;
-        if (user.email) row.email = user.email;
-        if (!row.userIds.includes(user.id)) row.userIds.push(user.id);
-      }
-      return { visitor: clone(row), isNew };
-    },
-    async linkUser({ visitorId, user, method, now, userAgent, deviceType }) {
+    async saveVisitor({ visitorId, user, now }) {
       if (this.failNext) {
         this.failNext = false;
         throw new Error("database down");
       }
-      let row = rows.get(visitorId);
-      if (!row) {
-        row = { visitorId, firstSeenAt: now, lastSeenAt: now, visitCount: 0, userIds: [], userAgent, deviceType };
-        rows.set(visitorId, row);
+      const row = rows.get(visitorId) || { visitorId, firstSeenAt: now };
+      row.lastSeenAt = now;
+      if (user) {
+        row.userId = user.id;
+        if (user.email) row.email = user.email;
       }
-      Object.assign(row, { userId: user.id, loginMethod: method, lastLoginAt: now });
-      if (user.email) row.email = user.email;
-      if (!row.userIds.includes(user.id)) row.userIds.push(user.id);
+      rows.set(visitorId, row);
     },
-    async addEvent(event) {
-      events.push({ ...event, createdAt: new Date() });
-    },
-    async stats() {
-      return { visitors: rows.size, signedInVisitors: [...rows.values()].filter((v) => v.userId).length };
-    },
-    async listVisitors({ page, limit, search, signedIn }) {
-      let items = [...rows.values()];
-      if (search) items = items.filter((v) => v.visitorId === search || (v.email || "").includes(search.toLowerCase()));
-      if (signedIn !== undefined) items = items.filter((v) => Boolean(v.userId) === signedIn);
-      return { items: items.slice((page - 1) * limit, page * limit).map((v) => ({ ...clone(v), capsules: [] })), total: items.length, page, limit };
-    },
-    async getVisitor(visitorId) {
-      const row = rows.get(visitorId);
-      return row ? { ...clone(row), capsules: [], events: events.filter((e) => e.visitorId === visitorId) } : null;
-    },
-    async listCapsules({ page, limit }) {
-      return { items: [], total: 0, page, limit };
+    async listUsers({ page, limit }) {
+      const all = [...rows.values()];
+      const items = all
+        .slice((page - 1) * limit, page * limit)
+        .map((v) => ({ visitorId: v.visitorId, email: v.email || null, capsules: [] }));
+      return { items, total: all.length, page, limit };
     },
   };
 }
