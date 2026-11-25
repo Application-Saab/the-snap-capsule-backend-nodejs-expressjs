@@ -14,6 +14,11 @@ async function startServer() {
 
     await mongoose.connect(config.MONGODB_URI);
     console.log("MongoDB Atlas connected successfully");
+    if (config.HORA_JWT_SECRET && config.HORA_JWT_SECRET.length < 32) {
+      // Hora's admin tokens are only as safe as this secret: a short or
+      // public one lets anyone make an admin token and read the dashboard data.
+      console.warn("WARNING: HORA_JWT_SECRET is weak (under 32 characters). Anyone who knows it can read Snap Capsule dashboard data. Use a long random secret in Hora and here.");
+    }
 
     const mailer = createMailer(config);
     if (mailer.transport === "console") {

@@ -1,26 +1,38 @@
-const { verifyAdminToken } = require("../utils/adminToken");
+const jwt = require("jsonwebtoken");
 
 const deny = (res, status, message) => res.status(status).json({ error: true, status, message, data: null });
 
-// Dashboard requests: `Authorization: Bearer <admin token>` from
-// POST /api/admin/auth/verify-otp. The email in the token must still be in
-// ADMIN_EMAILS, so removing someone from the list locks them out at once.
-// Without ADMIN_EMAILS the dashboard API is off and answers 404.
+// Admin panel roles allowed to read Snap Capsule data. Hora's admin login
+// (/api/admin/admin_signin) only issues tokens to role "admin".
+const ADMIN_ROLES = new Set(["admin"]);
+
+/** The token from `Authorization: Bearer <token>` or a bare `Authorization: <token>` (how the admin panel sends it). */
+function tokenFrom(req) {
+  const header = (req.get("authorization") || "").trim();
+  if (!header) return "";
+  const [scheme, value] = header.split(/\s+/);
+  return /^bearer$/i.test(scheme) ? value || "" : header;
+}
+
+// Dashboard requests carry the admin panel's login token (localStorage
+// "authToken", from Hora's /api/admin/admin_signin). It's checked with
+// HORA_JWT_SECRET and must belong to an admin.
+// Without HORA_JWT_SECRET the dashboard API is off and answers 404.
 function createRequireAdmin({ config }) {
   return function requireAdmin(req, res, next) {
-    if (!config.adminEmails.length) return deny(res, 404, "Not found");
-    const [scheme, token] = (req.get("authorization") || "").split(" ");
-    if (scheme !== "Bearer" || !token) return deny(res, 401, "Please sign in to the dashboard.");
-    let admin;
+    if (!config.HORA_JWT_SECRET) return deny(res, 404, "Not found");
+    const token = tokenFrom(req);
+    if (!token) return deny(res, 401, "Please log in to the admin panel.");
+    let payload;
     try {
-      admin = verifyAdminToken(token, { secret: config.JWT_SECRET });
+      payload = jwt.verify(token, config.HORA_JWT_SECRET, { algorithms: ["HS256"] });
     } catch {
-      return deny(res, 401, "Your dashboard session has expired. Please sign in again.");
+      return deny(res, 401, "Your admin session has expired. Please log in again.");
     }
-    if (!config.adminEmails.includes(admin.email)) return deny(res, 403, "This email doesn't have dashboard access.");
-    req.admin = admin;
+    if (!payload || !ADMIN_ROLES.has(payload.role)) return deny(res, 403, "Only admins can view Snap Capsule data.");
+    req.admin = { id: payload._id ? String(payload._id) : null, email: payload.email || null, name: payload.name || null };
     return next();
   };
 }
 
-module.exports = { createRequireAdmin };
+module.exports = { createRequireAdmin, tokenFrom };

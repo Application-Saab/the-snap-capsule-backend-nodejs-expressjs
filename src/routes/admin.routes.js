@@ -5,7 +5,7 @@ const sendResponse = (res, status, error, message, data = null) =>
   res.status(status).json({ error, status, message, data });
 
 // Admin dashboard API (read-only). Mounted behind requireAdmin
-// (Authorization: Bearer <token from /api/admin/auth/verify-otp>).
+// (the admin panel's login token in the Authorization header).
 //
 // Common query parameters for lists:
 //   page   (default 1), limit (default 20, max 100)
@@ -34,6 +34,9 @@ function createAdminRouter({ visitors, now = () => new Date() }) {
     const to = date(query.to, true);
     return { page, limit, search, from, to, invalidDate: from === null || to === null };
   };
+
+  // GET /api/admin/me → the admin from the token (checks the login works)
+  router.get("/me", (req, res) => sendResponse(res, 200, false, "Signed in", req.admin));
 
   // GET /api/admin/stats → totals and the last 24 hours
   router.get("/stats", async (req, res) => {

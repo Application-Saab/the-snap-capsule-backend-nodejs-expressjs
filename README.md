@@ -36,11 +36,11 @@ Optional: `PORT` (5000), `JWT_EXPIRES_IN` (`7d`), `OTP_TTL_MINUTES` (10), `CORS_
 | POST | `/api/internal/create-event-capsule` | Signed in. Creates an Event Capsule folder and returns its weblink (see below) |
 | GET | `/api/internal/event-capsule/:galleryId` | Signed in. Returns the signed-in user's capsule (same `data` as create, plus `subFolders`); `404` if it isn't theirs |
 | POST | `/api/track/visit` | Signed in or not. Records a page view for the visitor (see Visitor tracking) |
-| POST | `/api/admin/auth/request-otp`, `/verify-otp` | Dashboard sign-in for `ADMIN_EMAILS` (see Visitor tracking) |
-| GET | `/api/admin/stats` | Dashboard sign-in. Totals and last 24 hours |
-| GET | `/api/admin/capsules` | Dashboard sign-in. Event Capsules with event name, date, email, visitorId and webLink |
-| GET | `/api/admin/visitors` | Dashboard sign-in. Visitors with their account and capsules |
-| GET | `/api/admin/visitors/:visitorId` | Dashboard sign-in. One visitor with account, capsules and activity |
+| GET | `/api/admin/me` | Admin panel token. The admin from the token |
+| GET | `/api/admin/stats` | Admin panel token. Totals and last 24 hours |
+| GET | `/api/admin/capsules` | Admin panel token. Event Capsules with event name, date, email, visitorId and webLink |
+| GET | `/api/admin/visitors` | Admin panel token. Visitors with their account and capsules |
+| GET | `/api/admin/visitors/:visitorId` | Admin panel token. One visitor with account, capsules and activity |
 
 ### Sign-in: cookie or Bearer
 
@@ -149,26 +149,23 @@ No IP addresses are stored. Tracking never blocks sign-in or capsule creation: i
 
 Response: `{ "error": false, "status": 200, "message": "Visit recorded", "data": { "visitorId": "…", "isNew": true, "signedIn": false } }`. Only the path is kept (no query string, so gallery IDs in URLs aren't stored). Browser requests must come from `CORS_ORIGINS`, like sign-in.
 
-**Admin dashboard.** The team signs in on the dashboard's Snap Capsule page with their email and a 4-digit code, the same way customers log in on the website. Only emails listed in `ADMIN_EMAILS` get a code. The dashboard keeps the token it gets back and sends it with every request as `Authorization: Bearer <token>`. The token lasts `ADMIN_SESSION_HOURS` (default 12). Removing an email from `ADMIN_EMAILS` locks that person out immediately, even with a token they already have.
+**Admin dashboard.** The team logs in on the admin panel as usual (Hora's `/api/admin/admin_signin`). The panel keeps that token (`localStorage.authToken`) and sends it to these endpoints in the `Authorization` header, either bare or as `Bearer <token>`. This server checks the token with `HORA_JWT_SECRET`, the same secret Hora signs it with, and only accepts `role: "admin"`. There's no separate dashboard login.
 
 Settings (backend `.env`):
 
 ```
-ADMIN_EMAILS=you@thesnapcapsule.com,teammate@thesnapcapsule.com
-ADMIN_ORIGINS=https://<the dashboard's website>
-ADMIN_SESSION_HOURS=12
+HORA_JWT_SECRET=<the secret Hora signs admin tokens with>
+ADMIN_ORIGINS=https://<the admin panel's website>
 ```
 
-`ADMIN_ORIGINS` lets the dashboard's website call these endpoints from the browser (CORS). Without `ADMIN_EMAILS` the dashboard endpoints answer `404`. Dashboard codes are kept separately from website login codes, and a customer's website session can't open the dashboard.
+`ADMIN_ORIGINS` lets the admin panel's website call these endpoints from the browser (CORS). Without `HORA_JWT_SECRET` the dashboard endpoints answer `404`. A customer's website session can't open them.
 
-| Method | Path | |
-|---|---|---|
-| POST | `/api/admin/auth/request-otp` | `{ "email" }`. Emails a code if the email is in `ADMIN_EMAILS` (`403` otherwise) |
-| POST | `/api/admin/auth/verify-otp` | `{ "email", "code" }` → `data: { token, email, expiresAt }` |
-| GET | `/api/admin/auth/me` | Bearer token → `data: { email, expiresAt }` |
+> **Security:** these endpoints are only as safe as `HORA_JWT_SECRET`. Hora currently signs tokens with a short secret written in its public code, so anyone could make an admin token. Move Hora's secret to a long random value in its `.env` and use the same value here. The server logs a warning at startup while the secret is under 32 characters.
+
+`GET /api/admin/me` returns the admin from the token, which is useful to check the setup.
 
 ```bash
-curl -H "Authorization: Bearer $TOKEN" "https://thesnapcapsule.com/api/admin/capsules?search=rahul@&page=1&limit=20"
+curl -H "Authorization: $AUTH_TOKEN" "https://thesnapcapsule.com/api/admin/capsules?search=rahul@&page=1&limit=20"
 ```
 
 Lists accept `page` (default 1), `limit` (default 20, max 100), `search`, and `from` / `to` dates (`2026-11-01`; a plain `to` date includes the whole day).
@@ -192,7 +189,6 @@ src/models/Visitor.js         one row per browser (visitorId), linked to the acc
 src/models/VisitorEvent.js    page views, sign-ins and capsules per visitor
 src/routes/track.routes.js    /api/track/visit
 src/routes/admin.routes.js    /api/admin dashboard data (read-only)
-src/routes/adminAuth.routes.js /api/admin/auth dashboard sign-in (ADMIN_EMAILS + code)
 src/services/tracker.js       visitor tracking (never blocks sign-in or capsule creation)
 src/routes/weblink.js         /api/internal endpoints (create Event Capsule)
 src/utils/capsuleGenerateShortCode.js  7-character capsule short codes (from Hora)

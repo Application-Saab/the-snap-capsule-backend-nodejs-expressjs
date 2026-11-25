@@ -23,13 +23,9 @@ function matches(expectedHex, actualHex) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-/**
- * Creates a new code for `email`, stores its hash and emails it.
- * `key` keeps separate codes for the same email (the dashboard uses
- * "admin:<email>"), so a website login code can't open the dashboard.
- */
-async function requestOtp({ email, key = email, otps, mailer, config, now = new Date() }) {
-  const existing = await otps.get(key);
+/** Creates a new code for `email`, stores its hash and emails it. */
+async function requestOtp({ email, otps, mailer, config, now = new Date() }) {
+  const existing = await otps.get(email);
   const inWindow = Boolean(existing) && now - existing.windowStart < HOUR_MS;
 
   if (existing) {
@@ -52,8 +48,8 @@ async function requestOtp({ email, key = email, otps, mailer, config, now = new 
   const expiresAt = new Date(now.getTime() + config.OTP_TTL_MINUTES * 60 * 1000);
   const windowStart = inWindow ? existing.windowStart : now;
 
-  await otps.upsert(key, {
-    codeHash: hashCode(key, code, config.JWT_SECRET),
+  await otps.upsert(email, {
+    codeHash: hashCode(email, code, config.JWT_SECRET),
     expiresAt,
     attempts: 0,
     sendCount: inWindow ? existing.sendCount + 1 : 1,
@@ -72,25 +68,25 @@ async function requestOtp({ email, key = email, otps, mailer, config, now = new 
   return { expiresInMinutes: config.OTP_TTL_MINUTES, resendAfterSeconds: RESEND_COOLDOWN_SECONDS };
 }
 
-/** Checks `code` for `email` (or `key`, see requestOtp). Resolves on success; throws HttpError otherwise. */
-async function verifyOtp({ email, key = email, code, otps, config, now = new Date() }) {
-  const record = await otps.get(key);
+/** Checks `code` for `email`. Resolves on success; throws HttpError otherwise. */
+async function verifyOtp({ email, code, otps, config, now = new Date() }) {
+  const record = await otps.get(email);
 
   if (!record || record.expiresAt <= now) {
-    if (record) await otps.remove(key);
+    if (record) await otps.remove(email);
     throw new HttpError(400, "This code has expired. Please request a new one.", "OTP_EXPIRED");
   }
 
-  const counted = await otps.consumeAttempt(key, MAX_ATTEMPTS, now);
+  const counted = await otps.consumeAttempt(email, MAX_ATTEMPTS, now);
   if (!counted) {
-    await otps.remove(key);
+    await otps.remove(email);
     throw new HttpError(400, "Too many incorrect attempts. Please request a new code.", "OTP_TOO_MANY_ATTEMPTS");
   }
 
-  if (!matches(counted.codeHash, hashCode(key, code, config.JWT_SECRET))) {
+  if (!matches(counted.codeHash, hashCode(email, code, config.JWT_SECRET))) {
     const attemptsLeft = MAX_ATTEMPTS - counted.attempts;
     if (attemptsLeft <= 0) {
-      await otps.remove(key);
+      await otps.remove(email);
       throw new HttpError(400, "Too many incorrect attempts. Please request a new code.", "OTP_TOO_MANY_ATTEMPTS");
     }
     throw new HttpError(
@@ -102,7 +98,7 @@ async function verifyOtp({ email, key = email, code, otps, config, now = new Dat
   }
 
   // Each code works once.
-  await otps.remove(key);
+  await otps.remove(email);
 }
 
 module.exports = {

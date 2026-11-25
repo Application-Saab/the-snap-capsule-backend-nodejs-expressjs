@@ -8,7 +8,6 @@ const { createAuthRouter } = require("./routes/auth.routes");
 const { createWeblinkRouter } = require("./routes/weblink");
 const { createTrackRouter } = require("./routes/track.routes");
 const { createAdminRouter } = require("./routes/admin.routes");
-const { createAdminAuthRouter } = require("./routes/adminAuth.routes");
 const { createRequireAdmin } = require("./middleware/requireAdmin");
 const { createTracker } = require("./services/tracker");
 const { createRequireAuth } = require("./middleware/requireAuth");
@@ -69,9 +68,8 @@ function createApp({ config, users, otps, mailer, verifyGoogleToken, visitors })
   });
   app.use("/api/track", trackLimiter, createTrackRouter({ config, users, tracker }));
 
-  // Admin dashboard: sign in with an ADMIN_EMAILS address + code, then
-  // read-only data with Authorization: Bearer <admin token>.
-  app.use("/api/admin/auth", authLimiter, createAdminAuthRouter({ config, otps, mailer }));
+  // Admin dashboard (read-only): the admin panel's login token in the
+  // Authorization header, checked with HORA_JWT_SECRET.
   app.use("/api/admin", createRequireAdmin({ config }), createAdminRouter({ visitors }));
 
   // Event Capsules (same folders collection as Hora). Requires a signed-in

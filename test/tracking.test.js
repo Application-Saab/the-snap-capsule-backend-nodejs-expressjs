@@ -1,6 +1,7 @@
 const { test, describe } = require("node:test");
 const assert = require("node:assert/strict");
 const request = require("supertest");
+const jwt = require("jsonwebtoken");
 const { buildTestApp, TEST_CONFIG } = require("./helpers");
 const { signSessionToken } = require("../src/utils/sessionToken");
 const { loadEnv } = require("../src/config/env");
@@ -163,79 +164,71 @@ describe("login links the visitor", () => {
 });
 
 describe("admin dashboard", () => {
-  const ADMIN = "team@thesnapcapsule.com";
+  const HORA_SECRET = "hora-admin-secret-that-is-long-enough-1234";
   const DASHBOARD = "https://admin.example.com";
-  const adminConfig = { ...TEST_CONFIG, adminEmails: [ADMIN], adminOrigins: [DASHBOARD] };
+  const adminConfig = { ...TEST_CONFIG, HORA_JWT_SECRET: HORA_SECRET, adminOrigins: [DASHBOARD] };
   const withAdmin = () => buildTestApp({ config: adminConfig });
-
-  async function signIn(app, mailer, email = ADMIN) {
-    await request(app).post("/api/admin/auth/request-otp").set("Origin", DASHBOARD).send({ email }).expect(200);
-    const code = mailer.lastCodeFor(email);
-    const res = await request(app).post("/api/admin/auth/verify-otp").set("Origin", DASHBOARD).send({ email, code });
-    assert.equal(res.status, 200, JSON.stringify(res.body));
-    return res.body.data.token;
+  // Same shape as Hora's passportAuth.signToken (admin_signin).
+  const horaToken = (fields = {}, secret = HORA_SECRET, options = { expiresIn: "365d" }) =>
+    jwt.sign({ _id: "65a000000000000000000001", name: "Admin", email: "admin@horaservices.com", phone: "", role: "admin", ...fields }, secret, options);
+  async function signIn() {
+    return horaToken();
   }
 
-  test("is off (404) when ADMIN_EMAILS is empty", async () => {
+  test("is off (404) when HORA_JWT_SECRET isn't set", async () => {
     const { app } = buildTestApp();
-    assert.equal((await request(app).get("/api/admin/stats")).status, 404);
-    assert.equal((await request(app).post("/api/admin/auth/request-otp").send({ email: ADMIN })).status, 404);
+    const res = await request(app).get("/api/admin/stats").set("Authorization", horaToken());
+    assert.equal(res.status, 404);
   });
 
-  test("team member signs in with email + code and reads the data", async () => {
-    const { app, mailer } = withAdmin();
-    const token = await signIn(app, mailer);
-    const me = await request(app).get("/api/admin/auth/me").set("Authorization", `Bearer ${token}`);
-    assert.equal(me.status, 200);
-    assert.equal(me.body.data.email, ADMIN);
-    const stats = await request(app).get("/api/admin/stats").set("Authorization", `Bearer ${token}`);
-    assert.equal(stats.status, 200);
+  test("accepts the admin panel's token, bare or as Bearer", async () => {
+    const { app } = withAdmin();
+    const bare = await request(app).get("/api/admin/me").set("Authorization", horaToken());
+    assert.equal(bare.status, 200);
+    assert.equal(bare.body.data.email, "admin@horaservices.com");
+    const bearer = await request(app).get("/api/admin/stats").set("Authorization", `Bearer ${horaToken()}`);
+    assert.equal(bearer.status, 200);
   });
 
-  test("emails not in ADMIN_EMAILS can't get a code", async () => {
-    const { app, mailer } = withAdmin();
-    const res = await request(app).post("/api/admin/auth/request-otp").set("Origin", DASHBOARD).send({ email: "someone@example.com" });
-    assert.equal(res.status, 403);
-    assert.equal(mailer.lastCodeFor("someone@example.com"), undefined);
-  });
-
-  test("a website login code can't open the dashboard", async () => {
-    const { app, mailer } = withAdmin();
-    await request(app).post("/api/auth/email/request-otp").set("Origin", SITE).send({ email: ADMIN }).expect(200);
-    const websiteCode = mailer.lastCodeFor(ADMIN);
-    const res = await request(app).post("/api/admin/auth/verify-otp").set("Origin", DASHBOARD).send({ email: ADMIN, code: websiteCode });
-    assert.equal(res.status, 400);
+  test("refuses a missing, forged, expired or non-admin token", async () => {
+    const { app } = withAdmin();
+    assert.equal((await request(app).get("/api/admin/capsules")).status, 401);
+    assert.equal((await request(app).get("/api/admin/capsules").set("Authorization", "nope")).status, 401);
+    const forged = horaToken({}, "secret");
+    assert.equal((await request(app).get("/api/admin/capsules").set("Authorization", forged)).status, 401);
+    const expired = horaToken({}, HORA_SECRET, { expiresIn: -10 });
+    assert.equal((await request(app).get("/api/admin/capsules").set("Authorization", expired)).status, 401);
+    for (const role of ["customer", "supplier", "subadmin", undefined]) {
+      const res = await request(app).get("/api/admin/capsules").set("Authorization", horaToken({ role }));
+      assert.equal(res.status, 403, String(role));
+    }
+    const none = jwt.sign({ role: "admin" }, "", { algorithm: "none" });
+    assert.equal((await request(app).get("/api/admin/capsules").set("Authorization", none)).status, 401);
   });
 
   test("a customer's website session can't open the dashboard", async () => {
     const { app, users } = withAdmin();
-    const user = await users.create({ email: ADMIN, emailVerified: true });
+    const user = await users.create({ email: "asha@example.com", emailVerified: true });
     const sessionToken = signSessionToken(user.id, { secret: TEST_CONFIG.JWT_SECRET, expiresIn: "1h" });
     const res = await request(app).get("/api/admin/visitors").set("Authorization", `Bearer ${sessionToken}`);
     assert.equal(res.status, 401);
   });
 
-  test("no token, bad token, or a removed email are refused", async () => {
-    const { app, mailer, users, otps, visitors } = withAdmin();
-    assert.equal((await request(app).get("/api/admin/visitors")).status, 401);
-    assert.equal((await request(app).get("/api/admin/visitors").set("Authorization", "Bearer nope")).status, 401);
-    const token = await signIn(app, mailer);
-    // Same token after the email is removed from ADMIN_EMAILS.
-    const { app: later } = buildTestApp({ config: { ...adminConfig, adminEmails: ["other@thesnapcapsule.com"] }, users, otps, visitors, mailer });
-    assert.equal((await request(later).get("/api/admin/visitors").set("Authorization", `Bearer ${token}`)).status, 403);
-  });
-
-  test("sign-in requests from other websites are refused; the dashboard gets CORS", async () => {
+  test("the admin panel's website gets CORS for the dashboard API", async () => {
     const { app } = withAdmin();
-    const evil = await request(app).post("/api/admin/auth/request-otp").set("Origin", "https://evil.example").send({ email: ADMIN });
-    assert.equal(evil.status, 403);
-    const preflight = await request(app).options("/api/admin/capsules").set("Origin", DASHBOARD).set("Access-Control-Request-Method", "GET").set("Access-Control-Request-Headers", "authorization");
+    const preflight = await request(app)
+      .options("/api/admin/capsules")
+      .set("Origin", DASHBOARD)
+      .set("Access-Control-Request-Method", "GET")
+      .set("Access-Control-Request-Headers", "authorization");
     assert.equal(preflight.headers["access-control-allow-origin"], DASHBOARD);
+    const other = await request(app).options("/api/admin/capsules").set("Origin", "https://evil.example").set("Access-Control-Request-Method", "GET");
+    assert.equal(other.headers["access-control-allow-origin"], undefined);
   });
 
   test("lists visitors with their email, and is never cached", async () => {
-    const { app, mailer } = withAdmin();
-    const token = await signIn(app, mailer);
+    const { app } = withAdmin();
+    const token = await signIn();
     const auth = { Authorization: `Bearer ${token}` };
     await request(app).post(VISIT).set("Origin", SITE).send({ visitorId: VID, path: "/" });
     await request(app).post("/api/auth/google").set("Origin", SITE).send({ credential: "token-asha", visitorId: VID });
@@ -252,8 +245,8 @@ describe("admin dashboard", () => {
   });
 
   test("shows one visitor with their events", async () => {
-    const { app, mailer } = withAdmin();
-    const auth = { Authorization: `Bearer ${await signIn(app, mailer)}` };
+    const { app } = withAdmin();
+    const auth = { Authorization: `Bearer ${await signIn()}` };
     await request(app).post(VISIT).set("Origin", SITE).send({ visitorId: VID, path: "/" });
     await request(app).post("/api/auth/google").set("Origin", SITE).send({ credential: "token-asha", visitorId: VID });
     const res = await request(app).get(`/api/admin/visitors/${VID}`).set(auth);
@@ -264,8 +257,8 @@ describe("admin dashboard", () => {
   });
 
   test("stats and capsules respond; bad dates are rejected", async () => {
-    const { app, mailer } = withAdmin();
-    const auth = { Authorization: `Bearer ${await signIn(app, mailer)}` };
+    const { app } = withAdmin();
+    const auth = { Authorization: `Bearer ${await signIn()}` };
     const capsules = await request(app).get("/api/admin/capsules?page=2&limit=500").set(auth);
     assert.equal(capsules.status, 200);
     assert.equal(capsules.body.data.page, 2);
@@ -281,12 +274,12 @@ describe("config and helpers", () => {
     JWT_SECRET: "a".repeat(40),
   };
 
-  test("ADMIN_EMAILS and ADMIN_ORIGINS are trimmed lists", () => {
-    const env = loadEnv({ ...base, ADMIN_EMAILS: " Team@TheSnapCapsule.com , ops@example.com ", ADMIN_ORIGINS: "https://admin.example.com/ ," });
-    assert.deepEqual(env.adminEmails, ["team@thesnapcapsule.com", "ops@example.com"]);
-    assert.deepEqual(env.adminOrigins, ["https://admin.example.com"]);
-    assert.deepEqual(loadEnv(base).adminEmails, []);
-    assert.equal(loadEnv(base).ADMIN_SESSION_HOURS, 12);
+  test("HORA_JWT_SECRET is optional; ADMIN_ORIGINS is a trimmed list", () => {
+    assert.equal(loadEnv(base).HORA_JWT_SECRET, undefined);
+    assert.equal(loadEnv({ ...base, HORA_JWT_SECRET: "" }).HORA_JWT_SECRET, undefined);
+    const env = loadEnv({ ...base, HORA_JWT_SECRET: "abc", ADMIN_ORIGINS: "https://admin.example.com/ , https://admin2.example.com" });
+    assert.equal(env.HORA_JWT_SECRET, "abc");
+    assert.deepEqual(env.adminOrigins, ["https://admin.example.com", "https://admin2.example.com"]);
   });
 
   test("device type from the User-Agent", () => {
