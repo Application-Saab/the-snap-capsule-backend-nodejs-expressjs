@@ -36,10 +36,11 @@ Optional: `PORT` (5000), `JWT_EXPIRES_IN` (`7d`), `OTP_TTL_MINUTES` (10), `CORS_
 | POST | `/api/internal/create-event-capsule` | Signed in. Creates an Event Capsule folder and returns its weblink (see below) |
 | GET | `/api/internal/event-capsule/:galleryId` | Signed in. Returns the signed-in user's capsule (same `data` as create, plus `subFolders`); `404` if it isn't theirs |
 | POST | `/api/track/visit` | Signed in or not. Records a page view for the visitor (see Visitor tracking) |
-| GET | `/api/admin/stats` | Admin key. Totals and last 24 hours |
-| GET | `/api/admin/capsules` | Admin key. Event Capsules with event name, date, email, visitorId and webLink |
-| GET | `/api/admin/visitors` | Admin key. Visitors with their account and capsules |
-| GET | `/api/admin/visitors/:visitorId` | Admin key. One visitor with account, capsules and activity |
+| POST | `/api/admin/auth/request-otp`, `/verify-otp` | Dashboard sign-in for `ADMIN_EMAILS` (see Visitor tracking) |
+| GET | `/api/admin/stats` | Dashboard sign-in. Totals and last 24 hours |
+| GET | `/api/admin/capsules` | Dashboard sign-in. Event Capsules with event name, date, email, visitorId and webLink |
+| GET | `/api/admin/visitors` | Dashboard sign-in. Visitors with their account and capsules |
+| GET | `/api/admin/visitors/:visitorId` | Dashboard sign-in. One visitor with account, capsules and activity |
 
 ### Sign-in: cookie or Bearer
 
@@ -148,10 +149,26 @@ No IP addresses are stored. Tracking never blocks sign-in or capsule creation: i
 
 Response: `{ "error": false, "status": 200, "message": "Visit recorded", "data": { "visitorId": "…", "isNew": true, "signedIn": false } }`. Only the path is kept (no query string, so gallery IDs in URLs aren't stored). Browser requests must come from `CORS_ORIGINS`, like sign-in.
 
-**Admin dashboard API.** Read-only, turned on by setting `ADMIN_API_KEY` (at least 24 characters) and sent as the `X-Admin-Key` header. Call it from your dashboard's server or Postman, never from JavaScript in a visitor's browser, where anyone could read the key. Without `ADMIN_API_KEY` these routes answer `404`.
+**Admin dashboard.** The team signs in on the dashboard's Snap Capsule page with their email and a 4-digit code, the same way customers log in on the website. Only emails listed in `ADMIN_EMAILS` get a code. The dashboard keeps the token it gets back and sends it with every request as `Authorization: Bearer <token>`. The token lasts `ADMIN_SESSION_HOURS` (default 12). Removing an email from `ADMIN_EMAILS` locks that person out immediately, even with a token they already have.
+
+Settings (backend `.env`):
+
+```
+ADMIN_EMAILS=you@thesnapcapsule.com,teammate@thesnapcapsule.com
+ADMIN_ORIGINS=https://<the dashboard's website>
+ADMIN_SESSION_HOURS=12
+```
+
+`ADMIN_ORIGINS` lets the dashboard's website call these endpoints from the browser (CORS). Without `ADMIN_EMAILS` the dashboard endpoints answer `404`. Dashboard codes are kept separately from website login codes, and a customer's website session can't open the dashboard.
+
+| Method | Path | |
+|---|---|---|
+| POST | `/api/admin/auth/request-otp` | `{ "email" }`. Emails a code if the email is in `ADMIN_EMAILS` (`403` otherwise) |
+| POST | `/api/admin/auth/verify-otp` | `{ "email", "code" }` → `data: { token, email, expiresAt }` |
+| GET | `/api/admin/auth/me` | Bearer token → `data: { email, expiresAt }` |
 
 ```bash
-curl -H "X-Admin-Key: $ADMIN_API_KEY" "https://thesnapcapsule.com/api/admin/capsules?search=rahul@&page=1&limit=20"
+curl -H "Authorization: Bearer $TOKEN" "https://thesnapcapsule.com/api/admin/capsules?search=rahul@&page=1&limit=20"
 ```
 
 Lists accept `page` (default 1), `limit` (default 20, max 100), `search`, and `from` / `to` dates (`2026-11-01`; a plain `to` date includes the whole day).
@@ -174,7 +191,8 @@ src/models/folder.js          Event Capsule folder model, copied from Hora (same
 src/models/Visitor.js         one row per browser (visitorId), linked to the account at sign-in
 src/models/VisitorEvent.js    page views, sign-ins and capsules per visitor
 src/routes/track.routes.js    /api/track/visit
-src/routes/admin.routes.js    /api/admin dashboard endpoints (X-Admin-Key)
+src/routes/admin.routes.js    /api/admin dashboard data (read-only)
+src/routes/adminAuth.routes.js /api/admin/auth dashboard sign-in (ADMIN_EMAILS + code)
 src/services/tracker.js       visitor tracking (never blocks sign-in or capsule creation)
 src/routes/weblink.js         /api/internal endpoints (create Event Capsule)
 src/utils/capsuleGenerateShortCode.js  7-character capsule short codes (from Hora)

@@ -1,21 +1,24 @@
-const crypto = require("crypto");
+const { verifyAdminToken } = require("../utils/adminToken");
 
-// Protects the admin dashboard API with the ADMIN_API_KEY secret, sent as
-// the X-Admin-Key header. Call it from the dashboard's server (or a tool
-// like Postman), never from code that runs in a visitor's browser, because
-// anyone could read the key there.
-// Without ADMIN_API_KEY the admin API is off and answers 404.
+const deny = (res, status, message) => res.status(status).json({ error: true, status, message, data: null });
+
+// Dashboard requests: `Authorization: Bearer <admin token>` from
+// POST /api/admin/auth/verify-otp. The email in the token must still be in
+// ADMIN_EMAILS, so removing someone from the list locks them out at once.
+// Without ADMIN_EMAILS the dashboard API is off and answers 404.
 function createRequireAdmin({ config }) {
-  const expected = config.ADMIN_API_KEY ? crypto.createHash("sha256").update(config.ADMIN_API_KEY).digest() : null;
-
   return function requireAdmin(req, res, next) {
-    if (!expected) {
-      return res.status(404).json({ error: true, status: 404, message: "Not found", data: null });
+    if (!config.adminEmails.length) return deny(res, 404, "Not found");
+    const [scheme, token] = (req.get("authorization") || "").split(" ");
+    if (scheme !== "Bearer" || !token) return deny(res, 401, "Please sign in to the dashboard.");
+    let admin;
+    try {
+      admin = verifyAdminToken(token, { secret: config.JWT_SECRET });
+    } catch {
+      return deny(res, 401, "Your dashboard session has expired. Please sign in again.");
     }
-    const given = crypto.createHash("sha256").update(req.get("x-admin-key") || "").digest();
-    if (!crypto.timingSafeEqual(given, expected)) {
-      return res.status(401).json({ error: true, status: 401, message: "Invalid admin key", data: null });
-    }
+    if (!config.adminEmails.includes(admin.email)) return deny(res, 403, "This email doesn't have dashboard access.");
+    req.admin = admin;
     return next();
   };
 }

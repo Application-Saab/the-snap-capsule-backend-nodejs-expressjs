@@ -4,7 +4,8 @@ const { isValidVisitorId } = require("../utils/visitor");
 const sendResponse = (res, status, error, message, data = null) =>
   res.status(status).json({ error, status, message, data });
 
-// Admin dashboard API (read-only). Mounted behind requireAdmin.
+// Admin dashboard API (read-only). Mounted behind requireAdmin
+// (Authorization: Bearer <token from /api/admin/auth/verify-otp>).
 //
 // Common query parameters for lists:
 //   page   (default 1), limit (default 20, max 100)

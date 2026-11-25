@@ -8,6 +8,7 @@ const { createAuthRouter } = require("./routes/auth.routes");
 const { createWeblinkRouter } = require("./routes/weblink");
 const { createTrackRouter } = require("./routes/track.routes");
 const { createAdminRouter } = require("./routes/admin.routes");
+const { createAdminAuthRouter } = require("./routes/adminAuth.routes");
 const { createRequireAdmin } = require("./middleware/requireAdmin");
 const { createTracker } = require("./services/tracker");
 const { createRequireAuth } = require("./middleware/requireAuth");
@@ -32,7 +33,8 @@ function createApp({ config, users, otps, mailer, verifyGoogleToken, visitors })
   if (config.TRUST_PROXY) app.set("trust proxy", config.TRUST_PROXY);
 
   app.use(helmet());
-  app.use(cors({ origin: config.corsOrigins }));
+  // The website, plus the admin dashboard's website (ADMIN_ORIGINS).
+  app.use(cors({ origin: [...config.corsOrigins, ...config.adminOrigins] }));
   app.use(express.json({ limit: "100kb" }));
   if (config.NODE_ENV !== "test") app.use(morgan(config.NODE_ENV === "production" ? "combined" : "dev"));
 
@@ -67,7 +69,9 @@ function createApp({ config, users, otps, mailer, verifyGoogleToken, visitors })
   });
   app.use("/api/track", trackLimiter, createTrackRouter({ config, users, tracker }));
 
-  // Admin dashboard (read-only): X-Admin-Key: <ADMIN_API_KEY>.
+  // Admin dashboard: sign in with an ADMIN_EMAILS address + code, then
+  // read-only data with Authorization: Bearer <admin token>.
+  app.use("/api/admin/auth", authLimiter, createAdminAuthRouter({ config, otps, mailer }));
   app.use("/api/admin", createRequireAdmin({ config }), createAdminRouter({ visitors }));
 
   // Event Capsules (same folders collection as Hora). Requires a signed-in

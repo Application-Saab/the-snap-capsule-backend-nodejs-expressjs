@@ -55,17 +55,25 @@ const envSchema = z.object({
   SMTP_PASS: optionalString,
   MAIL_FROM: z.string().default("Snap Capsule <support@thesnapcapsule.com>"),
 
-  // Secret key for the admin dashboard API (/api/admin/*), sent as the
-  // X-Admin-Key header. Leave empty to turn the admin API off. Generate with:
-  //   node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
-  ADMIN_API_KEY: optionalString.refine((v) => v === undefined || v.length >= 24, {
-    message: "ADMIN_API_KEY must be at least 24 characters",
-  }),
+  // Admin dashboard (/api/admin/*). Team members sign in with one of these
+  // emails and a code sent to it. Comma-separated. Empty = dashboard API off.
+  ADMIN_EMAILS: z.string().default(""),
+  // Websites the dashboard runs on, comma-separated
+  // (e.g. https://admin.horaservices.com). Lets their browser call /api/admin.
+  ADMIN_ORIGINS: z.string().default(""),
+  // How long a dashboard sign-in lasts.
+  ADMIN_SESSION_HOURS: z.coerce.number().int().min(1).max(168).default(12),
 }).superRefine((env, ctx) => {
   if (env.NODE_ENV === "production" && !env.SMTP_HOST) {
     ctx.addIssue({ code: "custom", path: ["SMTP_HOST"], message: "SMTP_HOST is required in production to send login codes" });
   }
 });
+
+const list = (value) =>
+  String(value || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 
 function loadEnv(source = process.env) {
   const result = envSchema.safeParse(source);
@@ -76,9 +84,9 @@ function loadEnv(source = process.env) {
   const env = result.data;
   return {
     ...env,
-    corsOrigins: env.CORS_ORIGINS.split(",")
-      .map((s) => s.trim())
-      .filter(Boolean),
+    corsOrigins: list(env.CORS_ORIGINS),
+    adminEmails: list(env.ADMIN_EMAILS).map((email) => email.toLowerCase()),
+    adminOrigins: list(env.ADMIN_ORIGINS).map((origin) => origin.replace(/\/+$/, "")),
   };
 }
 
