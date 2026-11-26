@@ -1,7 +1,7 @@
 const { verifySessionToken } = require("../utils/sessionToken");
 const { HttpError } = require("../utils/httpError");
 const { SESSION_COOKIE, readCookie } = require("../utils/sessionCookie");
-const { requestOrigin, isAllowedOrigin, SAFE_METHODS } = require("./originCheck");
+const { requestOrigin, isAllowedOrigin, logRefused, SAFE_METHODS } = require("./originCheck");
 
 // Protects a route and puts the signed-in user on req.user. The session
 // token is read from `Authorization: Bearer <token>` (servers, apps,
@@ -22,6 +22,7 @@ function createRequireAuth({ config, users }) {
     }
 
     if (!fromHeader && !SAFE_METHODS.has(req.method) && !isAllowedOrigin(config, requestOrigin(req))) {
+      logRefused(config, requestOrigin(req), req);
       return next(new HttpError(403, "This request isn't allowed from this website.", "FORBIDDEN_ORIGIN"));
     }
 
@@ -42,4 +43,20 @@ function createRequireAuth({ config, users }) {
   };
 }
 
-module.exports = { createRequireAuth };
+/**
+ * The signed-in user for a request, or null (no token, expired, unknown
+ * user). For routes that work signed in or not, like visitor tracking.
+ */
+async function resolveSessionUser(req, { config, users }) {
+  const header = req.get("authorization") || "";
+  const [scheme, bearer] = header.split(" ");
+  const token = (scheme === "Bearer" && bearer) || readCookie(req, SESSION_COOKIE);
+  if (!token) return null;
+  try {
+    return await users.findById(verifySessionToken(token, { secret: config.JWT_SECRET }));
+  } catch {
+    return null;
+  }
+}
+
+module.exports = { createRequireAuth, resolveSessionUser };

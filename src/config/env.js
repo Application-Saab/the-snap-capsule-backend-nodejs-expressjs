@@ -54,11 +54,26 @@ const envSchema = z.object({
   SMTP_USER: optionalString,
   SMTP_PASS: optionalString,
   MAIL_FROM: z.string().default("Snap Capsule <support@thesnapcapsule.com>"),
+
+  // Admin dashboard (/api/admin/*). The team logs in on the admin panel
+  // (Hora's /api/admin/admin_signin); the panel sends that token here.
+  // HORA_JWT_SECRET is the secret Hora signs those tokens with, so this
+  // server can check them. Empty = dashboard API off.
+  HORA_JWT_SECRET: optionalString,
+  // Websites the admin panel runs on, comma-separated
+  // (e.g. https://admin.horaservices.com). Lets their browser call /api/admin.
+  ADMIN_ORIGINS: z.string().default(""),
 }).superRefine((env, ctx) => {
   if (env.NODE_ENV === "production" && !env.SMTP_HOST) {
     ctx.addIssue({ code: "custom", path: ["SMTP_HOST"], message: "SMTP_HOST is required in production to send login codes" });
   }
 });
+
+const list = (value) =>
+  String(value || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 
 function loadEnv(source = process.env) {
   const result = envSchema.safeParse(source);
@@ -69,9 +84,8 @@ function loadEnv(source = process.env) {
   const env = result.data;
   return {
     ...env,
-    corsOrigins: env.CORS_ORIGINS.split(",")
-      .map((s) => s.trim())
-      .filter(Boolean),
+    corsOrigins: list(env.CORS_ORIGINS).map((origin) => origin.replace(/\/+$/, "")),
+    adminOrigins: list(env.ADMIN_ORIGINS).map((origin) => origin.replace(/\/+$/, "")),
   };
 }
 

@@ -5,6 +5,7 @@ const TEST_CONFIG = {
   JWT_SECRET: "test-secret-that-is-long-enough-for-hs256-signing",
   JWT_EXPIRES_IN: "7d",
   corsOrigins: ["http://localhost:3000"],
+  adminOrigins: [],
   TRUST_PROXY: 0,
   OTP_TTL_MINUTES: 10,
   WEB_APP_URL: "https://thesnapcapsule.com",
@@ -97,6 +98,41 @@ function createMemoryUserRepository() {
   };
 }
 
+// In-memory stand-in for the MongoDB visitor repository. Capsules (folders)
+// need a real database, so users here have none.
+function createMemoryVisitorRepository() {
+  const rows = new Map();
+  return {
+    rows,
+    failNext: false,
+    async saveVisitor({ visitorId, user, now }) {
+      if (this.failNext) {
+        this.failNext = false;
+        throw new Error("database down");
+      }
+      const row = rows.get(visitorId) || { visitorId, firstSeenAt: now };
+      row.lastSeenAt = now;
+      if (user) {
+        row.userId = user.id;
+        if (user.email) row.email = user.email;
+      }
+      rows.set(visitorId, row);
+    },
+    async listUsers({ page, limit, search }) {
+      let all = [...rows.values()];
+      if (search) all = all.filter((v) => v.visitorId === search || (v.email || "").includes(search.toLowerCase()));
+      const items = all
+        .slice((page - 1) * limit, page * limit)
+        .map((v) => ({ visitorId: v.visitorId, email: v.email || null, capsules: [] }));
+      return { items, total: all.length, page, limit };
+    },
+    async summary() {
+      const all = [...rows.values()];
+      return { visitors: all.length, loggedInVisitors: all.filter((v) => v.email).length, capsules: 0 };
+    },
+  };
+}
+
 // Fake Google: credentials are keys into this table; anything else is
 // treated as an invalid token, like Google's verifier would.
 const GOOGLE_PROFILES = {
@@ -116,14 +152,16 @@ function buildTestApp(overrides = {}) {
   const users = overrides.users || createMemoryUserRepository();
   const otps = overrides.otps || createMemoryOtpRepository();
   const mailer = overrides.mailer || createFakeMailer();
+  const visitors = overrides.visitors || createMemoryVisitorRepository();
   const app = createApp({
-    config: TEST_CONFIG,
+    config: overrides.config || TEST_CONFIG,
+    visitors,
     users,
     otps,
     mailer,
     verifyGoogleToken: overrides.verifyGoogleToken || fakeVerifyGoogleToken,
   });
-  return { app, users, otps, mailer };
+  return { app, users, otps, mailer, visitors };
 }
 
-module.exports = { buildTestApp, createMemoryUserRepository, createMemoryOtpRepository, createFakeMailer, TEST_CONFIG };
+module.exports = { buildTestApp, createMemoryVisitorRepository, createMemoryUserRepository, createMemoryOtpRepository, createFakeMailer, TEST_CONFIG };

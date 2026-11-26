@@ -51,6 +51,12 @@ const FolderSchema = new mongoose.Schema(
       type: String,
       ref: "orders",
     },
+    // Snap Capsule: browser (visitorId, sc_vid cookie) that created the
+    // capsule, for visitor tracking. Not in Hora.
+    visitorId: {
+      type: String,
+      index: true,
+    },
     deviceTracking: [
       {
         userId: {
